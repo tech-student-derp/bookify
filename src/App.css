@@ -1,0 +1,44 @@
+/* App-level overrides — most styles live in index.css */
+
+/* ── Navbar responsive items ────────────────────────────── */
+.nav-desktop-link {
+  display: none;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: border-color 0.2s, color 0.2s;
+  letter-spacing: 0.02em;
+  font-family: 'Geist Mono', monospace;
+}
+
+.nav-cta-btn {
+  display: none;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--green-500), var(--blue-500));
+  color: white;
+  letter-spacing: 0.02em;
+  font-family: 'Geist Mono', monospace;
+  transition: opacity 0.2s, transform 0.2s;
+  box-shadow: 0 2px 8px color-mix(in oklch, var(--green-500) 40%, transparent);
+}
+
+@media (min-width: 768px) {
+  .nav-desktop-link { display: inline-block; }
+  .nav-cta-btn      { display: inline-block; }
+
+  /* Tailwind-style responsive utilities */
+  .md\:flex   { display: flex !important; }
+  .md\:block  { display: block !important; }
+  .md\:hidden { display: none !important; }
+}
+
+.hidden { display: none; }
