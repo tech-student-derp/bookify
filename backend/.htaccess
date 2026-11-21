@@ -1,0 +1,15 @@
+# Bookify — Backend .htaccess
+# Place this in the backend/ directory (or project root if Apache serves it).
+# Prevents direct directory listing and protects sensitive files.
+
+Options -Indexes
+
+# Block direct access to config files
+<FilesMatch "^(env|database|mail|session)\.php$">
+  Require all denied
+</FilesMatch>
+
+# Allow CORS preflight to reach PHP
+<IfModule mod_headers.c>
+  Header always set Vary "Origin"
+</IfModule>
