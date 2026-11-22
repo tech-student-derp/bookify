@@ -68,7 +68,10 @@ function sendVerificationEmail(string $toEmail, string $toName, string $verifica
     // ── Stub / dev fallback ───────────────────────────────────────────────
     $logDir  = __DIR__ . '/../logs';
     if (!is_dir($logDir)) {
-        @mkdir($logDir, 0755, true);
+        if (!@mkdir($logDir, 0755, true) && !is_dir($logDir)) {
+            error_log("Failed to create mail log directory: {$logDir}");
+            return false;
+        }
     }
     $logFile = $logDir . '/mail_stub.log';
     $entry   = sprintf(
@@ -77,7 +80,9 @@ function sendVerificationEmail(string $toEmail, string $toName, string $verifica
         $toEmail,
         $verificationUrl
     );
-    file_put_contents($logFile, $entry, FILE_APPEND | LOCK_EX);
+    if (@file_put_contents($logFile, $entry, FILE_APPEND | LOCK_EX) === false) {
+        error_log("Failed to write to mail stub log: {$logFile}");
+    }
 
     return true; // stub always "succeeds" so registration flow continues
 }

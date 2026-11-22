@@ -25,8 +25,11 @@ function isValidPassword(string $password): bool {
         && preg_match('/[\W_]/', $password);
 }
 
-/** Strip tags and trim; never returns null */
-function sanitizeString(string $value): string {
+/** Strip tags and trim; handles non-string gracefully and never returns null */
+function sanitizeString(mixed $value): string {
+    if (!is_string($value)) {
+        return '';
+    }
     return trim(strip_tags($value));
 }
 

@@ -1,9 +1,41 @@
-import { type FC } from 'react';
+import { type FC, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { getCurrentSellerApplication, submitSellerApplication, type SellerApplication } from '../../services/sellerApplicationApi';
 
 const SellerApplicationPage: FC = () => {
   const { user } = useAuth();
+  const [application, setApplication] = useState<SellerApplication | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const refreshApplication = async () => {
+    const result = await getCurrentSellerApplication();
+    setApplication(result.application);
+  };
+
+  useEffect(() => {
+    let active = true;
+    getCurrentSellerApplication()
+      .then((result) => { if (active) setApplication(result.application); })
+      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : 'Could not load your application.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const apply = async () => {
+    setSubmitting(true);
+    setError('');
+    try {
+      await submitSellerApplication();
+      await refreshApplication();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not submit your application.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div
@@ -31,7 +63,7 @@ const SellerApplicationPage: FC = () => {
           </p>
         </div>
 
-        {/* Coming soon notice */}
+        {/* Application status and submission */}
         <div
           style={{
             padding: '20px 24px',
@@ -43,7 +75,7 @@ const SellerApplicationPage: FC = () => {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
             <span style={{ fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-              Application System
+              Application status
             </span>
             <span
               style={{
@@ -58,12 +90,18 @@ const SellerApplicationPage: FC = () => {
                 textTransform: 'uppercase',
               }}
             >
-              Coming Soon
+              {loading ? 'Loading' : application?.status ?? 'Not applied'}
             </span>
           </div>
           <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.7 }}>
-            The seller application system is under development. Once available, you'll be able to submit your application and our team will review it within a few business days.
+            Applications use your existing Bookify account details and are reviewed by Bookify staff.
           </p>
+          {application && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '10px 0 0' }}>Submitted {new Date(application.applied_at).toLocaleDateString('en-PH')}{application.reviewed_at ? ` · reviewed ${new Date(application.reviewed_at).toLocaleDateString('en-PH')}` : ''}</p>}
+          {application?.status === 'rejected' && application.notes && <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '10px 0 0' }}>Review note: {application.notes}</p>}
+          {error && <p role="alert" style={{ fontSize: '0.82rem', color: 'oklch(55% 0.2 25)', margin: '12px 0 0' }}>{error}</p>}
+          {!loading && user?.role === 'customer' && user.is_verified && application?.status !== 'pending' && application?.status !== 'approved' && <button type="button" onClick={apply} disabled={submitting} style={{ marginTop: '16px', padding: '10px 16px', border: 0, borderRadius: '8px', color: 'white', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', font: 'inherit', fontSize: '.82rem', fontWeight: 600, cursor: submitting ? 'wait' : 'pointer' }}>{submitting ? 'Submitting…' : application?.status === 'rejected' ? 'Apply again' : 'Submit seller application'}</button>}
+          {user && !user.is_verified && <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '14px 0 0' }}>Verify your email before applying. <Link to="/resend-verification" style={{ color: 'var(--accent)' }}>Verify your account</Link></p>}
+          {application?.status === 'approved' && <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '14px 0 0' }}>Your account is approved as a seller. Seller listing tools are still being built.</p>}
         </div>
 
         {/* What to expect */}

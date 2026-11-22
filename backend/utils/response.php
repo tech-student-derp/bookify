@@ -5,9 +5,17 @@
 declare(strict_types=1);
 
 function jsonResponse(array $data, int $status = 200): never {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    try {
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    } catch (\JsonException $e) {
+        error_log('JSON encode error: ' . $e->getMessage());
+        echo '{"success":false,"message":"Failed to encode JSON response."}';
+    }
     exit;
 }
 

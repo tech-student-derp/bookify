@@ -5,14 +5,48 @@
  */
 declare(strict_types=1);
 
+// Start output buffering to prevent accidental PHP output from breaking JSON responses
+ob_start();
+
 require_once __DIR__ . '/../config/env.php';
+require_once __DIR__ . '/../utils/response.php';
 require_once __DIR__ . '/../config/session.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/mail.php';
-require_once __DIR__ . '/../utils/response.php';
 require_once __DIR__ . '/../utils/validation.php';
 require_once __DIR__ . '/../utils/csrf.php';
+require_once __DIR__ . '/../utils/audit.php';
 require_once __DIR__ . '/../middleware/auth.php';
+
+// Configure error logging and handlers to keep API output pure JSON
+set_error_handler(function (int $errno, string $errstr, string $errfile, int $errline): bool {
+    if (!(error_reporting() & $errno)) {
+        return false;
+    }
+    error_log("PHP Error [{$errno}]: {$errstr} in {$errfile} on line {$errline}");
+    return true; // Suppress PHP HTML error output
+});
+
+set_exception_handler(function (Throwable $e): void {
+    error_log('Uncaught Exception: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+    errorResponse('An internal server error occurred. Please try again later.', 500);
+});
+
+register_shutdown_function(function (): void {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        error_log("PHP Fatal Error [{$error['type']}]: {$error['message']} in {$error['file']} on line {$error['line']}");
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'A fatal server error occurred.',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+});
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 $allowedOrigin = $_ENV['APP_URL'] ?? 'http://localhost:5173';
@@ -28,16 +62,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 $action = $_GET['action'] ?? '';
 
-match ($action) {
-    'csrf'               => handleCsrf(),
-    'register'           => handleRegister(),
-    'login'              => handleLogin(),
-    'logout'             => handleLogout(),
-    'verify'             => handleVerifyEmail(),
-    'resend-verification'=> handleResendVerification(),
-    'me'                 => handleMe(),
-    default              => errorResponse('Unknown action.', 404),
-};
+try {
+    match ($action) {
+        'csrf'                => handleCsrf(),
+        'register'            => handleRegister(),
+        'login'               => handleLogin(),
+        'logout'              => handleLogout(),
+        'verify'              => handleVerifyEmail(),
+        'resend-verification' => handleResendVerification(),
+        'me'                  => handleMe(),
+        'update-profile'      => handleUpdateProfile(),
+        'change-password'     => handleChangePassword(),
+        'create-staff'        => handleCreateStaff(),
+        'list-staff'          => handleListStaff(),
+        default               => errorResponse('Unknown action.', 404),
+    };
+} catch (PDOException $e) {
+    error_log('Database query error: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+    errorResponse('A database error occurred. Please try again later.', 500);
+} catch (Throwable $e) {
+    error_log('Unhandled action error: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+    errorResponse('An unexpected server error occurred.', 500);
+}
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
@@ -168,9 +214,10 @@ function handleLogin(): never {
     }
 
     $db   = getDB();
+    $statusSelect = hasAccountStatusColumn($db) ? ', account_status' : '';
     $stmt = $db->prepare(
         'SELECT id, first_name, last_name, email, password_hash,
-                role, is_verified, contact_number
+                role, is_verified, contact_number' . $statusSelect . '
          FROM users WHERE email = ? LIMIT 1'
     );
     $stmt->execute([$email]);
@@ -183,26 +230,31 @@ function handleLogin(): never {
     if (!$user || !password_verify($password, $hashToVerify)) {
         errorResponse('Invalid email address or password.', 401);
     }
+    if (($user['account_status'] ?? 'active') !== 'active') {
+        errorResponse('This account is suspended. Contact Bookify support for assistance.', 403);
+    }
 
     // Regenerate session ID after successful login (session fixation protection)
     session_regenerate_id(true);
 
-    $_SESSION['user_id']     = $user['id'];
-    $_SESSION['email']       = $user['email'];
-    $_SESSION['role']        = $user['role'];
-    $_SESSION['is_verified'] = (bool) $user['is_verified'];
-    $_SESSION['first_name']  = $user['first_name'];
-    $_SESSION['last_name']   = $user['last_name'];
+    $_SESSION['user_id']        = $user['id'];
+    $_SESSION['email']          = $user['email'];
+    $_SESSION['role']           = $user['role'];
+    $_SESSION['is_verified']    = (bool) $user['is_verified'];
+    $_SESSION['first_name']     = $user['first_name'];
+    $_SESSION['last_name']      = $user['last_name'];
+    $_SESSION['contact_number'] = $user['contact_number'];
 
     successResponse([
         'message' => 'Login successful.',
         'user'    => [
-            'id'          => $user['id'],
-            'first_name'  => $user['first_name'],
-            'last_name'   => $user['last_name'],
-            'email'       => $user['email'],
-            'role'        => $user['role'],
-            'is_verified' => (bool) $user['is_verified'],
+            'id'             => $user['id'],
+            'first_name'     => $user['first_name'],
+            'last_name'      => $user['last_name'],
+            'email'          => $user['email'],
+            'role'           => $user['role'],
+            'is_verified'    => (bool) $user['is_verified'],
+            'contact_number' => $user['contact_number'],
         ],
     ]);
 }
@@ -347,15 +399,244 @@ function handleMe(): never {
         successResponse(['authenticated' => false, 'user' => null]);
     }
 
+    $db   = getDB();
+    $statusSelect = hasAccountStatusColumn($db) ? ', account_status' : '';
+    $stmt = $db->prepare(
+        'SELECT id, first_name, last_name, email, role, is_verified, contact_number, created_at' . $statusSelect . '
+         FROM users WHERE id = ? LIMIT 1'
+    );
+    $stmt->execute([$_SESSION['user_id']]);
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        $_SESSION = [];
+        successResponse(['authenticated' => false, 'user' => null]);
+    }
+    if (($user['account_status'] ?? 'active') !== 'active') {
+        $_SESSION = [];
+        successResponse(['authenticated' => false, 'user' => null]);
+    }
+
+    $_SESSION['first_name']     = $user['first_name'];
+    $_SESSION['last_name']      = $user['last_name'];
+    $_SESSION['email']          = $user['email'];
+    $_SESSION['role']           = $user['role'];
+    $_SESSION['is_verified']    = (bool) $user['is_verified'];
+    $_SESSION['contact_number'] = $user['contact_number'];
+
     successResponse([
         'authenticated' => true,
         'user' => [
-            'id'          => $_SESSION['user_id'],
-            'first_name'  => $_SESSION['first_name'],
-            'last_name'   => $_SESSION['last_name'],
-            'email'       => $_SESSION['email'],
-            'role'        => $_SESSION['role'],
-            'is_verified' => $_SESSION['is_verified'],
+            'id'             => (int) $user['id'],
+            'first_name'     => $user['first_name'],
+            'last_name'      => $user['last_name'],
+            'email'          => $user['email'],
+            'role'           => $user['role'],
+            'is_verified'    => (bool) $user['is_verified'],
+            'contact_number' => $user['contact_number'],
+            'created_at'     => $user['created_at'],
         ],
     ]);
+}
+
+// ── Update Profile ────────────────────────────────────────────────────────────
+function handleUpdateProfile(): never {
+    requireMethod('POST');
+    requireAuth();
+
+    if (!validateCsrfToken()) {
+        errorResponse('Invalid or missing CSRF token.', 403);
+    }
+
+    $body          = getJsonBody();
+    $firstName     = sanitizeString($body['first_name'] ?? '');
+    $lastName      = sanitizeString($body['last_name'] ?? '');
+    $contactNumber = sanitizeString($body['contact_number'] ?? '');
+
+    $errors = [];
+    if ($firstName === '') $errors['first_name'] = 'First name is required.';
+    if ($lastName === '')  $errors['last_name']  = 'Last name is required.';
+
+    if ($contactNumber !== '' && !isValidPhoneNumber($contactNumber)) {
+        $errors['contact_number'] = 'Enter a valid Philippine mobile number (e.g. 09XXXXXXXXX).';
+    }
+
+    if (!empty($errors)) {
+        errorResponse('Please correct the highlighted fields.', 422, ['errors' => $errors]);
+    }
+
+    $db = getDB();
+    requireActiveAccount($db);
+    $stmt = $db->prepare('UPDATE users SET first_name = ?, last_name = ?, contact_number = ? WHERE id = ?');
+    $stmt->execute([
+        $firstName,
+        $lastName,
+        $contactNumber !== '' ? $contactNumber : null,
+        $_SESSION['user_id'],
+    ]);
+
+    $_SESSION['first_name']     = $firstName;
+    $_SESSION['last_name']      = $lastName;
+    $_SESSION['contact_number'] = $contactNumber !== '' ? $contactNumber : null;
+
+    successResponse([
+        'message' => 'Profile updated successfully.',
+        'user'    => [
+            'id'             => (int) $_SESSION['user_id'],
+            'first_name'     => $firstName,
+            'last_name'      => $lastName,
+            'email'          => $_SESSION['email'],
+            'role'           => $_SESSION['role'],
+            'is_verified'    => (bool) $_SESSION['is_verified'],
+            'contact_number' => $contactNumber !== '' ? $contactNumber : null,
+        ],
+    ]);
+}
+
+// ── Change Password ───────────────────────────────────────────────────────────
+function handleChangePassword(): never {
+    requireMethod('POST');
+    requireAuth();
+
+    if (!validateCsrfToken()) {
+        errorResponse('Invalid or missing CSRF token.', 403);
+    }
+
+    $body            = getJsonBody();
+    $currentPassword = is_string($body['current_password'] ?? null) ? $body['current_password'] : '';
+    $newPassword     = is_string($body['new_password'] ?? null) ? $body['new_password'] : '';
+    $confirmPassword = is_string($body['confirm_password'] ?? null) ? $body['confirm_password'] : '';
+
+    $errors = [];
+    if ($currentPassword === '') {
+        $errors['current_password'] = 'Current password is required.';
+    }
+
+    if ($newPassword === '') {
+        $errors['new_password'] = 'New password is required.';
+    } elseif (!isValidPassword($newPassword)) {
+        $errors['new_password'] = 'Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character.';
+    }
+
+    if ($confirmPassword === '') {
+        $errors['confirm_password'] = 'Please confirm your new password.';
+    } elseif ($newPassword !== $confirmPassword) {
+        $errors['confirm_password'] = 'Passwords do not match.';
+    }
+
+    if (!empty($errors)) {
+        errorResponse('Please correct the highlighted fields.', 422, ['errors' => $errors]);
+    }
+
+    $db   = getDB();
+    requireActiveAccount($db);
+    $stmt = $db->prepare('SELECT password_hash FROM users WHERE id = ? LIMIT 1');
+    $stmt->execute([$_SESSION['user_id']]);
+    $user = $stmt->fetch();
+
+    if (!$user || !password_verify($currentPassword, $user['password_hash'])) {
+        errorResponse('Current password is incorrect.', 422, [
+            'errors' => ['current_password' => 'Current password is incorrect.'],
+        ]);
+    }
+
+    $newHash = password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]);
+    $update  = $db->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+    $update->execute([$newHash, $_SESSION['user_id']]);
+
+    successResponse(['message' => 'Password changed successfully.']);
+}
+
+// ── Create Staff Account ──────────────────────────────────────────────────────
+function handleCreateStaff(): never {
+    requireMethod('POST');
+
+    requireAuth();
+    $db = getDB();
+    requireDatabaseRole($db, 'admin');
+    requireAuditSchema($db);
+    if (!validateCsrfToken()) {
+        errorResponse('Invalid or missing CSRF token.', 403);
+    }
+
+    $body          = getJsonBody();
+    $firstName     = sanitizeString($body['first_name'] ?? '');
+    $lastName      = sanitizeString($body['last_name'] ?? '');
+    $email         = sanitizeString($body['email'] ?? '');
+    $password      = $body['password'] ?? '';
+    $contactNumber = sanitizeString($body['contact_number'] ?? '');
+
+    $errors = [];
+    if ($firstName === '') $errors['first_name'] = 'First name is required.';
+    if ($lastName === '')  $errors['last_name']  = 'Last name is required.';
+
+    if ($email === '') {
+        $errors['email'] = 'Email address is required.';
+    } elseif (!isValidEmail($email)) {
+        $errors['email'] = 'Enter a valid email address.';
+    }
+
+    if ($password === '') {
+        $errors['password'] = 'Password is required.';
+    } elseif (!isValidPassword($password)) {
+        $errors['password'] = 'Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character.';
+    }
+
+    if ($contactNumber !== '' && !isValidPhoneNumber($contactNumber)) {
+        $errors['contact_number'] = 'Enter a valid Philippine mobile number (e.g. 09XXXXXXXXX).';
+    }
+
+    if (!empty($errors)) {
+        errorResponse('Please correct the highlighted fields.', 422, ['errors' => $errors]);
+    }
+
+    $stmt = $db->prepare('SELECT id FROM users WHERE email = ? LIMIT 1');
+    $stmt->execute([$email]);
+    if ($stmt->fetch()) {
+        errorResponse('An account with this email address already exists.', 409, [
+            'errors' => ['email' => 'This email is already registered.'],
+        ]);
+    }
+
+    $passwordHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+    $insert = $db->prepare(
+        'INSERT INTO users (first_name, last_name, email, password_hash, contact_number, role, is_verified, created_at)
+         VALUES (?, ?, ?, ?, ?, "staff", 1, NOW())'
+    );
+    $db->beginTransaction();
+    try {
+    $insert->execute([
+        $firstName,
+        $lastName,
+        $email,
+        $passwordHash,
+        $contactNumber !== '' ? $contactNumber : null,
+    ]);
+
+    $userId = (int) $db->lastInsertId();
+    recordAdminAudit($db, (int) $_SESSION['user_id'], 'staff.create', 'user', $userId);
+    $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+
+    successResponse([
+        'message' => 'Staff account created successfully.',
+        'user_id' => $userId,
+    ], 201);
+}
+
+// ── List Staff Accounts ───────────────────────────────────────────────────────
+function handleListStaff(): never {
+    requireMethod('GET');
+
+    requireAuth();
+    $db = getDB();
+    requireDatabaseRole($db, 'admin');
+    $statusColumn = hasAccountStatusColumn($db) ? ', account_status' : '';
+    $stmt = $db->query('SELECT id, first_name, last_name, email, role, is_verified, contact_number, created_at' . $statusColumn . ' FROM users WHERE role = "staff" ORDER BY id DESC');
+    $staff = $stmt->fetchAll();
+
+    successResponse(['staff' => $staff]);
 }

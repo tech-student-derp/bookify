@@ -5,6 +5,8 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/../utils/response.php';
+
 $dbConfig = [
     'host'    => $_ENV['DB_HOST']    ?? 'localhost',
     'port'    => $_ENV['DB_PORT']    ?? '3306',
@@ -30,11 +32,16 @@ function getDB(): PDO {
         $dbConfig['charset']
     );
 
-    $pdo = new PDO($dsn, $dbConfig['user'], $dbConfig['pass'], [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-    ]);
+    try {
+        $pdo = new PDO($dsn, $dbConfig['user'], $dbConfig['pass'], [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+        ]);
+    } catch (PDOException $e) {
+        error_log('Database connection error: ' . $e->getMessage());
+        errorResponse('Database connection failed. Please ensure the database server is running and configured correctly.', 500);
+    }
 
     return $pdo;
 }

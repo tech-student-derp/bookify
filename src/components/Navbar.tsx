@@ -33,7 +33,7 @@ const CloseIcon: FC = () => (
 
 const navLinks = [
   { label: 'Home', href: '/#home' },
-  { label: 'Explore Books', href: '/#explore' },
+  { label: 'Explore Books', href: '/books' },
   { label: 'Sell Books', href: '/#sell' },
   { label: 'About', href: '/#about' },
 ];
@@ -115,10 +115,10 @@ const Navbar: FC<NavbarProps> = ({ resolvedScheme, onToggleTheme }) => {
 
           {authenticated && user ? (
             <>
-              <Link to="/account" className="nav-desktop-link"
+              <Link to="/dashboard" className="nav-desktop-link"
                 onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLAnchorElement).style.color = 'var(--accent)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)'; }}
-              >{user.first_name}</Link>
+              >Dashboard</Link>
               <button onClick={handleLogout} className="nav-cta-btn"
                 style={{ cursor: 'pointer', border: 'none' }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.9'; }}

@@ -17,7 +17,7 @@ export default defineConfig({
       '/backend': {
         target: 'http://localhost',
         changeOrigin: true,
-        rewrite: (path) => `/test-php/bookify${path}`,
+        rewrite: (path) => `/bookify${path}`,
       }
     }
   }

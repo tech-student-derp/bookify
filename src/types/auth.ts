@@ -8,6 +8,8 @@ export interface User {
   email: string;
   role: UserRole;
   is_verified: boolean;
+  contact_number?: string | null;
+  created_at?: string;
 }
 
 export interface AuthState {
@@ -28,6 +30,18 @@ export interface RegisterPayload {
 export interface LoginPayload {
   email: string;
   password: string;
+}
+
+export interface UpdateProfilePayload {
+  first_name: string;
+  last_name: string;
+  contact_number?: string;
+}
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
 }
 
 export interface ApiError {

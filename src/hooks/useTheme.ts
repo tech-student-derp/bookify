@@ -2,13 +2,6 @@ import { useState, useCallback } from 'react';
 
 type Theme = 'light dark' | 'light' | 'dark';
 
-function getMetaColorScheme(): Theme {
-  const meta = document.querySelector<HTMLMetaElement>(
-    'meta[name="color-scheme"]',
-  );
-  return (meta?.content ?? 'light dark') as Theme;
-}
-
 function setMetaColorScheme(value: Theme) {
   const meta = document.querySelector<HTMLMetaElement>(
     'meta[name="color-scheme"]',

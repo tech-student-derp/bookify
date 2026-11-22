@@ -27,6 +27,8 @@ if (is_readable($envFile)) {
         $value = trim($value, " \t\n\r\0\x0B\"'");
         if ($key !== '') {
             $_ENV[$key] = $value;
+            $_SERVER[$key] = $value;
+            putenv("{$key}={$value}");
         }
     }
 }

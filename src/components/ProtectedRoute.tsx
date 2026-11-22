@@ -1,6 +1,7 @@
 import { type FC, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import type { UserRole } from '../types/auth';
 
 /**
  * Wraps any route that requires authentication.
@@ -10,9 +11,10 @@ import { useAuth } from '../contexts/AuthContext';
 interface ProtectedRouteProps {
   children: ReactNode;
   requireVerified?: boolean;
+  allowedRoles?: UserRole[];
 }
 
-const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, requireVerified = false }) => {
+const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, requireVerified = false, allowedRoles }) => {
   const { authenticated, user, loading } = useAuth();
 
   if (loading) {
@@ -40,6 +42,10 @@ const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, requireVerified = f
 
   if (requireVerified && user && !user.is_verified) {
     return <Navigate to="/verify-email" replace />;
+  }
+
+  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

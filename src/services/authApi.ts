@@ -1,7 +1,7 @@
 // Bookify — API service layer
 // All requests go to the PHP backend at /backend/controllers/AuthController.php
 
-import type { User, RegisterPayload, LoginPayload } from '../types/auth';
+import type { User, RegisterPayload, LoginPayload, UpdateProfilePayload, ChangePasswordPayload } from '../types/auth';
 
 const API_BASE = '/backend/controllers/AuthController.php';
 
@@ -16,6 +16,10 @@ async function fetchCsrfToken(): Promise<string> {
   const data = await res.json();
   csrfToken = data.csrf_token as string;
   return csrfToken;
+}
+
+export function getCsrfToken(): Promise<string> {
+  return fetchCsrfToken();
 }
 
 function clearCsrfCache() {
@@ -85,4 +89,32 @@ export async function verifyEmail(token: string, email: string): Promise<{ messa
 
 export async function resendVerification(email: string): Promise<{ message: string }> {
   return apiRequest('resend-verification', 'POST', { email });
+}
+
+export async function updateProfile(payload: UpdateProfilePayload): Promise<{ message: string; user: User }> {
+  return apiRequest('update-profile', 'POST', payload as unknown as Record<string, unknown>);
+}
+
+export async function changePassword(payload: ChangePasswordPayload): Promise<{ message: string }> {
+  return apiRequest('change-password', 'POST', payload as unknown as Record<string, unknown>);
+}
+
+export interface StaffAccount {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: 'staff';
+  is_verified: boolean;
+  account_status?: 'active' | 'suspended';
+  contact_number: string | null;
+  created_at: string;
+}
+
+export async function listStaffAccounts(): Promise<{ staff: StaffAccount[] }> {
+  return apiRequest('list-staff', 'GET');
+}
+
+export async function createStaffAccount(payload: RegisterPayload): Promise<{ message: string; user_id: number }> {
+  return apiRequest('create-staff', 'POST', payload as unknown as Record<string, unknown>);
 }
