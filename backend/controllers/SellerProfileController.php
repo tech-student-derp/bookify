@@ -299,16 +299,18 @@ function handleUploadLogo(PDO $db, int $sellerId, array $sellerUser): never {
         maxDim: [3000, 3000]
     );
 
+    // Keep the prior image until its replacement is committed in the database.
+    $oldPath = null;
+
     // Update profile in database
-    $db->beginTransaction();
     try {
+        $db->beginTransaction();
         $checkStmt = $db->prepare('SELECT logo_path FROM seller_profiles WHERE user_id = ? FOR UPDATE');
         $checkStmt->execute([$sellerId]);
         $row = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row !== false) {
-            // Delete old logo file if present
-            deleteOldUploadFile($row['logo_path'] ?? null);
+            $oldPath = is_string($row['logo_path'] ?? null) ? $row['logo_path'] : null;
 
             $update = $db->prepare('UPDATE seller_profiles SET logo_path = ?, updated_at = NOW() WHERE user_id = ?');
             $update->execute([$uploadedPath, $sellerId]);
@@ -331,6 +333,9 @@ function handleUploadLogo(PDO $db, int $sellerId, array $sellerUser): never {
         deleteOldUploadFile($uploadedPath);
         throw $e;
     }
+
+    // A cleanup failure can leave an unused old file, but never a DB reference to a deleted file.
+    deleteOldUploadFile($oldPath);
 
     successResponse([
         'message' => 'Store logo uploaded successfully.',
@@ -361,16 +366,18 @@ function handleUploadBanner(PDO $db, int $sellerId, array $sellerUser): never {
         maxDim: [4000, 2000]
     );
 
+    // Keep the prior image until its replacement is committed in the database.
+    $oldPath = null;
+
     // Update profile in database
-    $db->beginTransaction();
     try {
+        $db->beginTransaction();
         $checkStmt = $db->prepare('SELECT banner_path FROM seller_profiles WHERE user_id = ? FOR UPDATE');
         $checkStmt->execute([$sellerId]);
         $row = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row !== false) {
-            // Delete old banner file if present
-            deleteOldUploadFile($row['banner_path'] ?? null);
+            $oldPath = is_string($row['banner_path'] ?? null) ? $row['banner_path'] : null;
 
             $update = $db->prepare('UPDATE seller_profiles SET banner_path = ?, updated_at = NOW() WHERE user_id = ?');
             $update->execute([$uploadedPath, $sellerId]);
@@ -394,6 +401,9 @@ function handleUploadBanner(PDO $db, int $sellerId, array $sellerUser): never {
         throw $e;
     }
 
+    // A cleanup failure can leave an unused old file, but never a DB reference to a deleted file.
+    deleteOldUploadFile($oldPath);
+
     successResponse([
         'message' => 'Store banner uploaded successfully.',
         'banner_path' => $uploadedPath,
@@ -409,6 +419,7 @@ function handleRemoveLogo(PDO $db, int $sellerId): never {
         errorResponse('Invalid or missing CSRF token.', 403);
     }
 
+    $oldPath = null;
     $db->beginTransaction();
     try {
         $checkStmt = $db->prepare('SELECT logo_path FROM seller_profiles WHERE user_id = ? FOR UPDATE');
@@ -416,7 +427,7 @@ function handleRemoveLogo(PDO $db, int $sellerId): never {
         $row = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row && !empty($row['logo_path'])) {
-            deleteOldUploadFile($row['logo_path']);
+            $oldPath = is_string($row['logo_path']) ? $row['logo_path'] : null;
             $update = $db->prepare('UPDATE seller_profiles SET logo_path = NULL, updated_at = NOW() WHERE user_id = ?');
             $update->execute([$sellerId]);
         }
@@ -427,6 +438,8 @@ function handleRemoveLogo(PDO $db, int $sellerId): never {
         if ($db->inTransaction()) $db->rollBack();
         throw $e;
     }
+
+    deleteOldUploadFile($oldPath);
 
     successResponse(['message' => 'Store logo removed successfully.']);
 }
@@ -440,6 +453,7 @@ function handleRemoveBanner(PDO $db, int $sellerId): never {
         errorResponse('Invalid or missing CSRF token.', 403);
     }
 
+    $oldPath = null;
     $db->beginTransaction();
     try {
         $checkStmt = $db->prepare('SELECT banner_path FROM seller_profiles WHERE user_id = ? FOR UPDATE');
@@ -447,7 +461,7 @@ function handleRemoveBanner(PDO $db, int $sellerId): never {
         $row = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row && !empty($row['banner_path'])) {
-            deleteOldUploadFile($row['banner_path']);
+            $oldPath = is_string($row['banner_path']) ? $row['banner_path'] : null;
             $update = $db->prepare('UPDATE seller_profiles SET banner_path = NULL, updated_at = NOW() WHERE user_id = ?');
             $update->execute([$sellerId]);
         }
@@ -458,6 +472,8 @@ function handleRemoveBanner(PDO $db, int $sellerId): never {
         if ($db->inTransaction()) $db->rollBack();
         throw $e;
     }
+
+    deleteOldUploadFile($oldPath);
 
     successResponse(['message' => 'Store banner removed successfully.']);
 }

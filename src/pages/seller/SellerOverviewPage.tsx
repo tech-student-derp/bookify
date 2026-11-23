@@ -44,7 +44,7 @@ export const SellerOverviewPage: FC = () => {
       badge: 'Phase 5',
     },
     {
-      label: 'Total Earnings',
+      label: 'Completed Orders',
       value: '—',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -52,8 +52,8 @@ export const SellerOverviewPage: FC = () => {
           <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
         </svg>
       ),
-      note: '15% commission ledger arriving in Phase 6',
-      badge: 'Phase 6',
+      note: 'Completed order tracking arriving in Phase 5',
+      badge: 'Phase 5',
     },
   ];
 
