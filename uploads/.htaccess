@@ -1,0 +1,15 @@
+# Bookify — Uploads Directory Protection
+# Prevents execution of scripts and limits allowed file types in uploads directory
+Options -ExecCGI -Indexes
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phps .phar .cgi .pl .py .asp .sh
+AddType text/plain .php .phtml .php3 .php4 .php5 .php7 .phps .phar
+
+# Block any executable script access
+<FilesMatch "(?i)\.(php|phtml|php3|php4|php5|php7|phps|phar|cgi|pl|py|asp|sh|shtml|env|config)$">
+  Require all denied
+</FilesMatch>
+
+# Only allow safe media types to be directly served
+<FilesMatch "(?i)\.(jpe?g|png|webp|gif|svg|pdf|ico)$">
+  Require all granted
+</FilesMatch>

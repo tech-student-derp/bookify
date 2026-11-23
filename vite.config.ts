@@ -18,6 +18,11 @@ export default defineConfig({
         target: 'http://localhost',
         changeOrigin: true,
         rewrite: (path) => `/bookify${path}`,
+      },
+      '/uploads': {
+        target: 'http://localhost',
+        changeOrigin: true,
+        rewrite: (path) => `/bookify${path}`,
       }
     }
   }

@@ -1,5 +1,5 @@
 import { type FC } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useTheme } from './hooks/useTheme';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -25,6 +25,14 @@ import StaffAddAccountPage from './pages/StaffAddAccountPage';
 import MarketplacePage from './pages/MarketplacePage';
 import BackOfficePage from './pages/backoffice/BackOfficePage';
 
+// Seller Workspace pages
+import SellerLayout from './pages/seller/SellerLayout';
+import SellerOverviewPage from './pages/seller/SellerOverviewPage';
+import SellerListingsPage from './pages/seller/SellerListingsPage';
+import SellerOrdersPage from './pages/seller/SellerOrdersPage';
+import SellerEarningsPage from './pages/seller/SellerEarningsPage';
+import SellerSettingsPage from './pages/seller/SellerSettingsPage';
+
 /** Landing page — existing hero + sections */
 const LandingPage: FC = () => (
   <main>
@@ -40,10 +48,13 @@ const AppContent: FC<{ resolvedScheme: 'light' | 'dark'; toggle: () => void }> =
   const isDashboardRoute = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/account');
   const isBackOfficeRoute = location.pathname.startsWith('/admin') || location.pathname.startsWith('/staff');
   const isPlainHtmlRoute = location.pathname.startsWith('/staffaddaccount');
+  const isSellerRoute = location.pathname.startsWith('/seller');
 
   return (
     <>
-      {!isDashboardRoute && !isBackOfficeRoute && !isPlainHtmlRoute && <Navbar resolvedScheme={resolvedScheme} onToggleTheme={toggle} />}
+      {!isDashboardRoute && !isBackOfficeRoute && !isPlainHtmlRoute && !isSellerRoute && (
+        <Navbar resolvedScheme={resolvedScheme} onToggleTheme={toggle} />
+      )}
       <Routes>
         {/* Public */}
         <Route path="/books" element={<MarketplacePage />} />
@@ -59,6 +70,25 @@ const AppContent: FC<{ resolvedScheme: 'light' | 'dark'; toggle: () => void }> =
         {/* Staff and administrator workspaces use the same operational shell, with separate permissions. */}
         <Route path="/admin/*" element={<ProtectedRoute allowedRoles={['admin']}><BackOfficePage audience="admin" /></ProtectedRoute>} />
         <Route path="/staff/*" element={<ProtectedRoute allowedRoles={['staff', 'admin']}><BackOfficePage audience="staff" /></ProtectedRoute>} />
+
+        {/* Seller Workspace — strictly protected for users with role='seller' */}
+        <Route path="/seller" element={<Navigate to="/seller/overview" replace />} />
+        <Route
+          path="/seller/*"
+          element={
+            <ProtectedRoute allowedRoles={['seller']}>
+              <SellerLayout resolvedScheme={resolvedScheme} onToggleTheme={toggle} />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="/seller/overview" replace />} />
+          <Route path="overview" element={<SellerOverviewPage />} />
+          <Route path="listings" element={<SellerListingsPage />} />
+          <Route path="orders" element={<SellerOrdersPage />} />
+          <Route path="earnings" element={<SellerEarningsPage />} />
+          <Route path="store-settings" element={<SellerSettingsPage />} />
+          <Route path="*" element={<Navigate to="/seller/overview" replace />} />
+        </Route>
 
         {/* Protected — requires login */}
         <Route
