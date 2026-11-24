@@ -1,41 +1,37 @@
-﻿# Bookify Phase 3 Store Profile Report
+﻿# Bookify Phase 3: Store Profile & Upload Infrastructure
 
-**Review date:** November 23, 2026
-**Status:** Existing implementation reviewed; database-dependent verification blocked
+**Implementation review:** November 24, 2026
+**Status:** Code implemented; database-backed workflows require the Phase 3 migration
 
-## Implemented
+## Scope and existing implementation
 
-- Seller profile API actions for retrieval, create/update, logo/banner upload, and logo/banner removal are present in `backend/controllers/SellerProfileController.php`.
-- The controller uses the authenticated session user ID, checks the current database role and active account, and requires CSRF tokens for write actions.
-- Profile fields are validated server-side. Pickup fields are nullable, so an address is not required for digital-only sellers.
-- Logo and banner uploads enforce 2 MB and 5 MB limits, use Fileinfo MIME detection plus image parsing/dimension checks, and generate server-controlled names. Upload paths are constrained during deletion, and `uploads/.htaccess` blocks script execution.
-- Seller settings UI and typed API calls are present, including load/error states, previews, field validation, and save/upload/remove feedback.
-- Seller overview now lists Total Listings, Active Listings, Pending Orders, and Completed Orders. Completed Orders remains an empty Phase 5 metric; no earnings calculations were added.
-- Replacement/removal now commits the profile path change before deleting the old file. If database persistence fails during upload, the new file is cleaned up. If old-file cleanup fails, an orphan file may remain, while the database retains a valid path.
+The repository already contained the seller store settings interface and its PHP/API implementation. This milestone review confirmed and retained those implementations rather than adding a second profile feature:
 
-## Tests performed in this review
+- `src/pages/seller/SellerSettingsPage.tsx` loads and edits store identity, biography, and optional pickup details; it shows loading, field validation, success, and error feedback.
+- `src/services/sellerProfileApi.ts` connects the interface to the PHP controller with session credentials and CSRF headers.
+- `backend/controllers/SellerProfileController.php` scopes records to the authenticated session user, rechecks the active seller role in the database, validates fields, and audits profile operations.
+- Logo and banner processing checks upload status, size, detected MIME type, image parsing, and dimensions. It accepts JPEG, PNG, and WebP only, uses server-generated filenames, persists paths, and removes replaced files only after the database commit. `uploads/.htaccess` disables script execution.
+- Seller profile fields, including pickup address, are nullable where appropriate for digital-only sellers.
+- The overview uses **Completed Orders** in its fourth metric card. Its roadmap now marks Phases 2 and 3 completed.
 
-- `npm.cmd run build`: passed (`tsc -b` and Vite production build; 626 modules). Vite emitted its existing large-chunk warning.
-- PHP syntax check with XAMPP PHP 8.2.12 for every `backend/**/*.php`: passed.
-- `git diff --check`: passed.
-- Static code review covered controller ownership/authorization, CSRF, input checks, upload checks, transaction ordering, API wrappers, and settings page states.
+## Database dependency
 
-## Not tested in this review
+The controller's `seller_profiles` table was previously defined only inside the unexecuted Phase 5 seller ecosystem migration. Added `database/migrations/2026_11_24_phase3_store_profiles.sql` as an additive, idempotent Phase 3 migration for that table. The Phase 5 migration was not changed or executed. Its existing `CREATE TABLE IF NOT EXISTS seller_profiles` remains compatible with this Phase 3 schema.
 
-- Browser-driven profile create/update, uploads, previews, or removals.
-- Live authorization/API behavior for seller, customer, admin, or staff accounts.
-- Customer dashboard, marketplace, catalog, and admin/staff runtime regressions. The build only verifies compilation, not these workflows.
+Apply the Phase 3 migration manually to the existing `bookify` database using phpMyAdmin or the MariaDB client after confirming the intended XAMPP database connection. Do not run the Phase 5 migration as part of Phase 3.
 
-## Blocked: live schema and database behavior
+## Verification
 
-Read-only connection attempts using both the project PHP configuration and XAMPP MariaDB client failed during authentication:
+- `npm.cmd run build` â€” passed (`tsc -b` and Vite production build; 626 modules). Vite reports the existing large JavaScript chunk warning.
+- PHP lint across `backend/**/*.php` using XAMPP PHP 8.2.12 â€” passed.
+- `git diff --check` â€” passed.
+- Apache `AuthController.php?action=csrf` â€” returned HTTP 200 and a CSRF token.
+- Apache `SellerProfileController.php?action=get` without a session â€” returned HTTP 401, confirming logged-out API rejection.
+- Vite proxy `AuthController.php?action=csrf` — returned HTTP 200 through `/backend/*`.
+- Vite proxy `SellerProfileController.php?action=get` without a session — returned HTTP 401 through `/backend/*`.
 
-`auth_gssapi_client` plugin could not be loaded / authentication method unknown to the client.
+## Not verified in this environment
 
-The project config targets `localhost:3306`, database `bookify`, user `root`. The local client is MariaDB 10.4.32. Its configured plugin directory (`C:/xampp/mysql/lib/plugin/`) is absent from this installation, and no `auth_gssapi_client` file was found under `C:/xampp/mysql`. The error indicates the server requests GSSAPI client authentication that the available clients cannot load. The exact server account/plugin configuration cannot be confirmed without authenticating; therefore it is not possible to determine from current access whether the server-side account setting is intentional or stale.
+The profile migration was intentionally not executed. Consequently, authenticated seller create/edit, duplicate-name behavior, upload validation and persistence, file replacement/removal, and live database constraints were not exercised. Customer/admin/staff login routing and authenticated seller route behavior were not browser-tested; source inspection confirms the existing `ProtectedRoute` redirects logged-out users to `/login` and disallowed roles to `/dashboard`.
 
-No credentials, authentication settings, database records, or migrations were changed. These schema items remain **unverified**: `seller_profiles`; seller columns in `book_listings` and `order_items`; related indexes and foreign keys; and agreement with `2026_11_23_phase5_seller_ecosystem.sql`. The Phase 1 and Phase 3 report statements about migration execution conflict and are not treated as proof.
-
-## Manual verification required
-
-An administrator should confirm which authentication plugin the `root` account is intended to use and provide a client/driver compatible with that configuration, without weakening authentication. After read-only access works, inspect the required schema and constraints before relying on Phase 3 against the active database. Then run authenticated browser checks for profile operations and role boundaries.
+After applying only the Phase 3 migration, start Apache and MySQL through XAMPP and run `npm run dev`. Sign in as an approved seller, visit `/seller/store-settings`, create and edit a profile, upload valid JPEG/PNG/WebP logo and banner images, and check that oversized, unsupported, malformed, or out-of-dimension images are rejected. Verify the saved paths and fields in `seller_profiles`, replace/remove images, and check role redirects with logged-out and customer accounts.

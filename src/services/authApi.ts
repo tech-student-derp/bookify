@@ -65,7 +65,11 @@ export async function getMe(): Promise<{ authenticated: boolean; user: User | nu
   return apiRequest('me', 'GET');
 }
 
-export async function register(payload: RegisterPayload): Promise<{ message: string; user_id: number }> {
+export interface RegistrationWithCaptchaPayload extends RegisterPayload {
+  turnstile_token: string;
+}
+
+export async function register(payload: RegistrationWithCaptchaPayload): Promise<{ message: string; user_id: number }> {
   return apiRequest('register', 'POST', payload as unknown as Record<string, unknown>);
 }
 
@@ -79,12 +83,8 @@ export async function logout(): Promise<{ message: string }> {
   return result;
 }
 
-export async function verifyEmail(token: string, email: string): Promise<{ message: string }> {
-  const url = `${API_BASE}?action=verify&token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
-  const res = await fetch(url, { credentials: 'include' });
-  const data = await res.json();
-  if (!res.ok) throw data;
-  return data;
+export async function verifyEmail(otp: string, email: string): Promise<{ message: string }> {
+  return apiRequest('verify', 'POST', { otp, email });
 }
 
 export async function resendVerification(email: string): Promise<{ message: string }> {

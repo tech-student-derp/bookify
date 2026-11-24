@@ -46,16 +46,22 @@ const RegisterSuccessPage: FC = () => {
         </h1>
 
         <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.7 }}>
-          We sent a verification link to:
+          We sent a six-digit verification code to:
         </p>
         <p style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)', margin: '0 0 28px', wordBreak: 'break-all' }}>
           {email}
         </p>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0 0 36px', lineHeight: 1.7 }}>
-          Click the link in the email to verify your account. The link expires in 24 hours.
+          Enter the code to verify your account. It expires in 30 minutes.
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+          <Link
+            to={`/verify-email?email=${encodeURIComponent(email)}`}
+            style={{ display: 'inline-block', padding: '11px 28px', borderRadius: '10px', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', color: 'white', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}
+          >
+            Enter verification code
+          </Link>
           <Link
             to="/login"
             style={{
@@ -79,7 +85,7 @@ const RegisterSuccessPage: FC = () => {
             onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--accent)'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)'; }}
           >
-            Didn't receive it? Resend verification email
+            Didn't receive it? Resend verification code
           </Link>
         </div>
       </div>

@@ -150,6 +150,8 @@ backend/logs/
 
 # Bookify — PHP vendor (if Composer is used)
 vendor/
+composer.phar
+composer-download.phar
 
 # Astro generated types
 .astro/

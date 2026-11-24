@@ -3,9 +3,11 @@ import {
   type FC,
   type FormEvent,
   type ChangeEvent,
+  useRef,
 } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { register } from '../../services/authApi';
+import TurnstileWidget, { type TurnstileWidgetHandle } from '../../components/TurnstileWidget';
 import type { RegisterPayload } from '../../types/auth';
 
 // ── Eye icons for password visibility toggle ───────────────────────────────
@@ -54,7 +56,11 @@ const RegisterPage: FC = () => {
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [globalError, setGlobalError] = useState('');
+  const [deliveryFailed, setDeliveryFailed] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
   const [loading, setLoading] = useState(false);
+  const captchaRef = useRef<TurnstileWidgetHandle>(null);
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -69,16 +75,21 @@ const RegisterPage: FC = () => {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setGlobalError('');
+    setDeliveryFailed(false);
     setFieldErrors({});
     setLoading(true);
 
     try {
-      await register(form);
+      await register({ ...form, turnstile_token: captchaToken });
       navigate('/register/success', { state: { email: form.email } });
     } catch (err: unknown) {
-      const apiErr = err as { message?: string; errors?: FieldErrors };
+      const apiErr = err as { message?: string; errors?: FieldErrors; code?: string };
       setGlobalError(apiErr.message ?? 'Registration failed. Please try again.');
+      setDeliveryFailed(apiErr.code === 'verification_delivery_failed');
       if (apiErr.errors) setFieldErrors(apiErr.errors);
+      // Siteverify consumes a token even if another registration step fails.
+      captchaRef.current?.reset();
+      setCaptchaToken('');
     } finally {
       setLoading(false);
     }
@@ -164,6 +175,13 @@ const RegisterPage: FC = () => {
             }}
           >
             {globalError}
+            {deliveryFailed && (
+              <div style={{ marginTop: '10px' }}>
+                <Link to="/resend-verification" state={{ email: form.email }} style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                  Request another verification code
+                </Link>
+              </div>
+            )}
           </div>
         )}
 
@@ -300,10 +318,22 @@ const RegisterPage: FC = () => {
             {fieldErrors.contact_number && <p style={errorTextStyle}>{fieldErrors.contact_number}</p>}
           </div>
 
+          <div style={{ marginBottom: '24px', minWidth: 0 }}>
+            <label style={labelStyle}>Security Check</label>
+            <TurnstileWidget
+              ref={captchaRef}
+              siteKey={turnstileSiteKey}
+              onToken={setCaptchaToken}
+            />
+            <p style={{ ...errorTextStyle, color: 'var(--text-muted)' }}>
+              Complete the Cloudflare check before creating your account.
+            </p>
+          </div>
+
           {/* Submit */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !captchaToken}
             style={{
               width: '100%',
               padding: '12px',
@@ -317,10 +347,11 @@ const RegisterPage: FC = () => {
               fontWeight: 600,
               fontFamily: "'Geist Mono', monospace",
               letterSpacing: '0.02em',
-              cursor: loading ? 'not-allowed' : 'pointer',
+              cursor: loading || !captchaToken ? 'not-allowed' : 'pointer',
+              opacity: !captchaToken && !loading ? 0.6 : 1,
               transition: 'opacity 0.2s, transform 0.2s',
             }}
-            onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLButtonElement).style.opacity = '0.9'; }}
+            onMouseEnter={(e) => { if (!loading && captchaToken) (e.currentTarget as HTMLButtonElement).style.opacity = '0.9'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
           >
             {loading ? 'Creating account…' : 'Create Account'}

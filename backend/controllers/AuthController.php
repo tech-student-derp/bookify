@@ -16,6 +16,9 @@ require_once __DIR__ . '/../config/mail.php';
 require_once __DIR__ . '/../utils/validation.php';
 require_once __DIR__ . '/../utils/csrf.php';
 require_once __DIR__ . '/../utils/audit.php';
+require_once __DIR__ . '/../utils/verification_rate_limit.php';
+require_once __DIR__ . '/../utils/turnstile.php';
+require_once __DIR__ . '/../utils/email_otp.php';
 require_once __DIR__ . '/../middleware/auth.php';
 
 // Configure error logging and handlers to keep API output pure JSON
@@ -102,6 +105,24 @@ function handleRegister(): never {
 
     $body = getJsonBody();
 
+    $db = getDB();
+    if (!allowVerificationRequest($db)) {
+        errorResponse('Too many account or verification requests. Please try again later.', 429);
+    }
+
+    $turnstileToken = is_string($body['turnstile_token'] ?? null) ? $body['turnstile_token'] : '';
+    if ($turnstileToken === '') {
+        errorResponse('Complete the bot check and try again.', 422, ['code' => 'captcha_required']);
+    }
+
+    $captchaStatus = verifyTurnstileToken($turnstileToken, $_SERVER['REMOTE_ADDR'] ?? null);
+    if ($captchaStatus === 'unavailable') {
+        errorResponse('Bot protection is temporarily unavailable. Please try again later.', 503, ['code' => 'captcha_unavailable']);
+    }
+    if ($captchaStatus !== 'valid') {
+        errorResponse('The bot check expired or could not be verified. Please complete it again.', 422, ['code' => 'captcha_invalid']);
+    }
+
     $firstName     = sanitizeString($body['first_name']     ?? '');
     $lastName      = sanitizeString($body['last_name']      ?? '');
     $email         = sanitizeString($body['email']          ?? '');
@@ -142,7 +163,6 @@ function handleRegister(): never {
     }
 
     // ── Duplicate email check ─────────────────────────────────────────────
-    $db   = getDB();
     $stmt = $db->prepare('SELECT id FROM users WHERE email = ? LIMIT 1');
     $stmt->execute([$email]);
 
@@ -158,15 +178,12 @@ function handleRegister(): never {
     // Role is ALWAYS 'customer' — never trusted from the client.
     $role = 'customer';
 
-    $token          = bin2hex(random_bytes(32));
-    $tokenHash      = hash('sha256', $token);
-    $tokenExpiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
-
+    $otp = generateEmailOtp();
     $stmt = $db->prepare(
         'INSERT INTO users
             (first_name, last_name, email, password_hash, contact_number, role,
              is_verified, verification_token, verification_token_expires_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())'
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), NOW())'
     );
     $stmt->execute([
         $firstName,
@@ -175,17 +192,21 @@ function handleRegister(): never {
         $passwordHash,
         $contactNumber !== '' ? $contactNumber : null,
         $role,
-        $tokenHash,
-        $tokenExpiresAt,
+        $otp['hash'],
     ]);
 
     $userId = (int) $db->lastInsertId();
 
     // ── Send verification email ───────────────────────────────────────────
-    $appUrl          = rtrim($_ENV['APP_URL'] ?? 'http://localhost:5173', '/');
-    $verificationUrl = "{$appUrl}/verify-email?token={$token}&email=" . urlencode($email);
-
-    sendVerificationEmail($email, "{$firstName} {$lastName}", $verificationUrl);
+    if (!sendVerificationEmail($email, "{$firstName} {$lastName}", $otp['code'])) {
+        $clearToken = $db->prepare('UPDATE users SET verification_token = NULL, verification_token_expires_at = NULL, verification_attempts = 0 WHERE id = ? AND verification_token = ?');
+        $clearToken->execute([$userId, $otp['hash']]);
+        errorResponse(
+            'Your account was created, but Bookify could not send the verification email. Please request a new code.',
+            503,
+            ['code' => 'verification_delivery_failed', 'email' => $email]
+        );
+    }
 
     successResponse([
         'message' => 'Registration successful. Please check your email to verify your account.',
@@ -232,6 +253,13 @@ function handleLogin(): never {
     }
     if (($user['account_status'] ?? 'active') !== 'active') {
         errorResponse('This account is suspended. Contact Bookify support for assistance.', 403);
+    }
+    if (!(bool) $user['is_verified']) {
+        errorResponse(
+            'Verify your email address before signing in. You can request another verification code below.',
+            403,
+            ['code' => 'email_unverified', 'email' => $email]
+        );
     }
 
     // Regenerate session ID after successful login (session fixation protection)
@@ -288,46 +316,94 @@ function handleLogout(): never {
 
 // ── Verify email ──────────────────────────────────────────────────────────────
 function handleVerifyEmail(): never {
-    requireMethod('GET');
+    requireMethod('POST');
 
-    $token = sanitizeString($_GET['token'] ?? '');
-    $email = sanitizeString($_GET['email'] ?? '');
-
-    if ($token === '' || $email === '') {
-        errorResponse('Invalid verification link.', 400);
+    if (!validateCsrfToken()) {
+        errorResponse('Invalid or missing CSRF token.', 403);
     }
 
-    $tokenHash = hash('sha256', $token);
+    $body = getJsonBody();
+    $code = is_string($body['otp'] ?? null) ? trim($body['otp']) : '';
+    $email = sanitizeString($body['email'] ?? '');
+
+    if (!preg_match('/^\d{6}$/D', $code) || !isValidEmail($email)) {
+        errorResponse('Enter your email address and the six-digit verification code.', 422);
+    }
 
     $db   = getDB();
-    $stmt = $db->prepare(
-        'SELECT id, is_verified, verification_token_expires_at
+    $db->beginTransaction();
+    try {
+      $stmt = $db->prepare(
+        'SELECT id, is_verified, verification_token, verification_attempts,
+                verification_token_expires_at,
+                (verification_token_expires_at > NOW()) AS token_is_valid
          FROM users
-         WHERE email = ? AND verification_token = ? LIMIT 1'
-    );
-    $stmt->execute([$email, $tokenHash]);
-    $user = $stmt->fetch();
+         WHERE email = ? LIMIT 1 FOR UPDATE'
+      );
+      $stmt->execute([$email]);
+      $user = $stmt->fetch();
 
-    if (!$user) {
-        errorResponse('Invalid verification link.', 400);
-    }
+      if (!$user) {
+        $db->commit();
+        errorResponse('The verification code is invalid or unavailable. Request a new code if needed.', 400);
+      }
 
-    if ((bool) $user['is_verified']) {
+      if ((bool) $user['is_verified']) {
+        $db->commit();
         successResponse(['message' => 'Your email is already verified. You can log in.']);
-    }
+      }
 
-    if (strtotime($user['verification_token_expires_at']) < time()) {
-        errorResponse('This verification link has expired. Please request a new one.', 410);
-    }
+      if (empty($user['verification_token'])) {
+        $db->commit();
+        errorResponse('The verification code is invalid or unavailable. Request a new code if needed.', 400);
+      }
 
-    // Mark verified, clear token
-    $stmt = $db->prepare(
+      if (empty($user['token_is_valid'])) {
+        $clear = $db->prepare('UPDATE users SET verification_token = NULL, verification_token_expires_at = NULL, verification_attempts = 0 WHERE id = ?');
+        $clear->execute([$user['id']]);
+        $db->commit();
+        errorResponse('This verification code has expired. Please request a new one.', 410);
+      }
+
+      if ((int) $user['verification_attempts'] >= EMAIL_OTP_MAX_ATTEMPTS) {
+        $clear = $db->prepare('UPDATE users SET verification_token = NULL, verification_token_expires_at = NULL, verification_attempts = 0 WHERE id = ?');
+        $clear->execute([$user['id']]);
+        $db->commit();
+        errorResponse('Too many incorrect codes. Request a new verification code.', 429);
+      }
+
+      if (!verifyEmailOtp($code, (string) $user['verification_token'])) {
+        $attempts = (int) $user['verification_attempts'] + 1;
+        if ($attempts >= EMAIL_OTP_MAX_ATTEMPTS) {
+          $update = $db->prepare('UPDATE users SET verification_token = NULL, verification_token_expires_at = NULL, verification_attempts = 0 WHERE id = ?');
+          $update->execute([$user['id']]);
+          $db->commit();
+          errorResponse('Too many incorrect codes. Request a new verification code.', 429);
+        }
+        $update = $db->prepare('UPDATE users SET verification_attempts = ? WHERE id = ?');
+        $update->execute([$attempts, $user['id']]);
+        $db->commit();
+        errorResponse('That verification code is incorrect. Please try again.', 400);
+      }
+
+      // Mark verified and consume the OTP atomically.
+      $stmt = $db->prepare(
         'UPDATE users
          SET is_verified = 1, verification_token = NULL,
-             verification_token_expires_at = NULL, verified_at = NOW()
-         WHERE id = ?'
-    );
-    $stmt->execute([$user['id']]);
+             verification_token_expires_at = NULL, verification_attempts = 0,
+             verified_at = NOW()
+         WHERE id = ? AND is_verified = 0'
+      );
+      $stmt->execute([$user['id']]);
+      if ($stmt->rowCount() !== 1) {
+        $db->rollBack();
+        errorResponse('The verification code is invalid or unavailable.', 400);
+      }
+      $db->commit();
+    } catch (Throwable $e) {
+      if ($db->inTransaction()) $db->rollBack();
+      throw $e;
+    }
 
     successResponse(['message' => 'Email verified successfully. You can now log in.']);
 }
@@ -347,48 +423,55 @@ function handleResendVerification(): never {
         errorResponse('Enter a valid email address.', 422);
     }
 
-    $db   = getDB();
-    $stmt = $db->prepare(
-        'SELECT id, first_name, last_name, is_verified FROM users WHERE email = ? LIMIT 1'
-    );
+    $db = getDB();
+    if (!allowVerificationRequest($db)) {
+        errorResponse('Too many verification requests. Please try again later.', 429);
+    }
+
+    $genericMessage = 'If an account exists for this address and is eligible, the request has been processed. Check your inbox later; if no message arrives, try again.';
+    $stmt = $db->prepare('SELECT id, first_name, last_name, is_verified FROM users WHERE email = ? LIMIT 1');
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
-    // Don't reveal whether the account exists
+    // Keep unknown, verified, and cooldown responses indistinguishable.
     if (!$user || (bool) $user['is_verified']) {
-        successResponse(['message' => 'If this email is registered and unverified, a new verification link has been sent.']);
+        successResponse(['message' => $genericMessage]);
     }
 
-    // Rate-limit: check resend_requested_at
-    $rateStmt = $db->prepare(
-        'SELECT resend_requested_at FROM users WHERE id = ? LIMIT 1'
-    );
-    $rateStmt->execute([$user['id']]);
-    $rateRow = $rateStmt->fetch();
-    if ($rateRow && $rateRow['resend_requested_at'] !== null) {
-        $lastRequest = strtotime($rateRow['resend_requested_at']);
-        if (time() - $lastRequest < 60) {
-            errorResponse('Please wait before requesting another verification email.', 429);
+    $db->beginTransaction();
+    try {
+        $lock = $db->prepare(
+            'SELECT resend_requested_at,
+                    (resend_requested_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)) AS cooldown_active
+             FROM users WHERE id = ? FOR UPDATE'
+        );
+        $lock->execute([$user['id']]);
+        $rateRow = $lock->fetch();
+        if (!empty($rateRow['cooldown_active'])) {
+            $db->commit();
+            successResponse(['message' => $genericMessage]);
         }
+
+        $otp = generateEmailOtp();
+        $update = $db->prepare(
+            'UPDATE users SET verification_token = ?, verification_token_expires_at = DATE_ADD(NOW(), INTERVAL 30 MINUTE), verification_attempts = 0, resend_requested_at = NOW() WHERE id = ?'
+        );
+        $update->execute([$otp['hash'], $user['id']]);
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
     }
 
-    $token          = bin2hex(random_bytes(32));
-    $tokenHash      = hash('sha256', $token);
-    $tokenExpiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
+    $sent = sendVerificationEmail($email, "{$user['first_name']} {$user['last_name']}", $otp['code']);
+    if (!$sent) {
+        $clear = $db->prepare('UPDATE users SET verification_token = NULL, verification_token_expires_at = NULL, verification_attempts = 0 WHERE id = ? AND verification_token = ?');
+        $clear->execute([$user['id'], $otp['hash']]);
+    }
 
-    $stmt = $db->prepare(
-        'UPDATE users
-         SET verification_token = ?, verification_token_expires_at = ?,
-             resend_requested_at = NOW()
-         WHERE id = ?'
-    );
-    $stmt->execute([$tokenHash, $tokenExpiresAt, $user['id']]);
-
-    $appUrl          = rtrim($_ENV['APP_URL'] ?? 'http://localhost:5173', '/');
-    $verificationUrl = "{$appUrl}/verify-email?token={$token}&email=" . urlencode($email);
-    sendVerificationEmail($email, "{$user['first_name']} {$user['last_name']}", $verificationUrl);
-
-    successResponse(['message' => 'If this email is registered and unverified, a new verification link has been sent.']);
+    // Same response for all account states; transport rejection is not reported
+    // as delivery, and the attempted token is invalidated on failure.
+    successResponse(['message' => $genericMessage]);
 }
 
 // ── Me (current session) ──────────────────────────────────────────────────────

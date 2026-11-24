@@ -104,10 +104,10 @@ export const SettingsTab: FC<SettingsTabProps> = ({ user }) => {
     setResendMessage('');
     try {
       const res = await resendVerification(user.email);
-      setResendMessage(res.message ?? 'Verification link sent. Check your email or logs.');
+      setResendMessage(res.message ?? 'If eligible, a verification code will be sent to your email.');
     } catch (err: unknown) {
       const apiErr = err as { message?: string };
-      setResendMessage(apiErr.message ?? 'Failed to resend verification link.');
+      setResendMessage(apiErr.message ?? 'Could not request a verification code.');
     } finally {
       setResendLoading(false);
     }
@@ -267,7 +267,7 @@ export const SettingsTab: FC<SettingsTabProps> = ({ user }) => {
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
           >
-            {resendLoading ? 'Sending…' : 'Resend Verification Link'}
+            {resendLoading ? 'Sending…' : 'Resend Verification Code'}
           </button>
         )}
       </div>

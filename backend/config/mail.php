@@ -1,122 +1,102 @@
 <?php
 /**
- * Bookify — Mail configuration
- *
- * Returns the SMTP configuration array. Actual mail sending uses PHPMailer
- * when it is available, otherwise falls back to a stub that logs to a file.
- *
- * To enable real mail delivery:
- *   1. Install PHPMailer: composer require phpmailer/phpmailer
- *   2. Set the MAIL_* environment variables in your .env file.
+ * Bookify SMTP mail configuration and verification message delivery.
+ * Provider changes are environment-only (for example Mailtrap in development,
+ * Brevo in production); SMTP errors never fall back to logging a token.
  */
 declare(strict_types=1);
 
 function getMailConfig(): array {
     return [
-        'host'         => $_ENV['MAIL_HOST']         ?? '',
-        'port'         => (int) ($_ENV['MAIL_PORT']  ?? 587),
-        'username'     => $_ENV['MAIL_USERNAME']      ?? '',
-        'password'     => $_ENV['MAIL_PASSWORD']      ?? '',
-        'encryption'   => $_ENV['MAIL_ENCRYPTION']   ?? 'tls',   // 'tls' | 'ssl' | ''
-        'from_address' => $_ENV['MAIL_FROM_ADDRESS']  ?? 'noreply@bookify.local',
-        'from_name'    => $_ENV['MAIL_FROM_NAME']     ?? 'Bookify',
+        'mailer'       => strtolower(trim($_ENV['MAIL_MAILER'] ?? 'smtp')),
+        'host'          => trim($_ENV['MAIL_HOST'] ?? ''),
+        'port'          => (int) ($_ENV['MAIL_PORT'] ?? 587),
+        'username'      => $_ENV['MAIL_USERNAME'] ?? '',
+        'password'      => $_ENV['MAIL_PASSWORD'] ?? '',
+        'encryption'    => strtolower(trim($_ENV['MAIL_ENCRYPTION'] ?? 'tls')),
+        'from_address'  => trim($_ENV['MAIL_FROM_ADDRESS'] ?? ''),
+        'from_name'     => trim($_ENV['MAIL_FROM_NAME'] ?? 'Bookify'),
     ];
 }
 
-/**
- * sendVerificationEmail()
- *
- * Attempts to send via PHPMailer when available.
- * Falls back to writing the verification URL to
- * backend/logs/mail_stub.log so you can test without SMTP.
- *
- * @return bool  true on success (or stub write), false on hard failure
- */
-function sendVerificationEmail(string $toEmail, string $toName, string $verificationUrl): bool {
+/** Send a verification code. Returns false for missing config or SMTP rejection. */
+function sendVerificationEmail(string $toEmail, string $toName, string $otpCode): bool {
+    if (!preg_match('/^\d{6}$/D', $otpCode)) return false;
     $cfg = getMailConfig();
-
-    // ── PHPMailer path ────────────────────────────────────────────────────
     $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
-    if (is_readable($autoload) && $cfg['host'] !== '') {
-        require_once $autoload;
 
-        $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
-        try {
-            $mail->isSMTP();
-            $mail->Host       = $cfg['host'];
-            $mail->SMTPAuth   = true;
-            $mail->Username   = $cfg['username'];
-            $mail->Password   = $cfg['password'];
-            $mail->SMTPSecure = $cfg['encryption'];
-            $mail->Port       = $cfg['port'];
-
-            $mail->setFrom($cfg['from_address'], $cfg['from_name']);
-            $mail->addAddress($toEmail, $toName);
-
-            $mail->isHTML(true);
-            $mail->Subject = 'Verify your Bookify account';
-            $mail->Body    = buildVerificationEmailHtml($toName, $verificationUrl);
-            $mail->AltBody = "Hi {$toName},\n\nPlease verify your Bookify account:\n{$verificationUrl}\n\nThis link expires in 24 hours.\n\nIf you did not register, ignore this email.";
-
-            $mail->send();
-            return true;
-        } catch (\Exception) {
-            // Fall through to stub
-        }
+    if (
+        $cfg['mailer'] !== 'smtp'
+        || $cfg['host'] === ''
+        || $cfg['username'] === ''
+        || $cfg['password'] === ''
+        || !filter_var($cfg['from_address'], FILTER_VALIDATE_EMAIL)
+        || !is_readable($autoload)
+    ) {
+        error_log('Verification email delivery is unavailable: SMTP configuration or PHPMailer is missing.');
+        return false;
     }
 
-    // ── Stub / dev fallback ───────────────────────────────────────────────
-    $logDir  = __DIR__ . '/../logs';
-    if (!is_dir($logDir)) {
-        if (!@mkdir($logDir, 0755, true) && !is_dir($logDir)) {
-            error_log("Failed to create mail log directory: {$logDir}");
+    require_once $autoload;
+
+    try {
+        $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
+        $mail->isSMTP();
+        $mail->Host = $cfg['host'];
+        $mail->SMTPAuth = true;
+        $mail->Username = $cfg['username'];
+        $mail->Password = $cfg['password'];
+        $mail->Port = $cfg['port'];
+        $mail->Timeout = 15;
+        $mail->SMTPDebug = 0;
+        $mail->CharSet = 'UTF-8';
+
+        if ($cfg['encryption'] === 'tls') {
+            $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+        } elseif ($cfg['encryption'] === 'ssl') {
+            $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+        } elseif ($cfg['encryption'] === '') {
+            $mail->SMTPSecure = '';
+            $mail->SMTPAutoTLS = false;
+        } else {
+            error_log('Verification email delivery failed: unsupported SMTP encryption setting.');
             return false;
         }
-    }
-    $logFile = $logDir . '/mail_stub.log';
-    $entry   = sprintf(
-        "[%s] TO:%s  URL:%s\n",
-        date('Y-m-d H:i:s'),
-        $toEmail,
-        $verificationUrl
-    );
-    if (@file_put_contents($logFile, $entry, FILE_APPEND | LOCK_EX) === false) {
-        error_log("Failed to write to mail stub log: {$logFile}");
-    }
 
-    return true; // stub always "succeeds" so registration flow continues
+        $mail->setFrom($cfg['from_address'], $cfg['from_name']);
+        $mail->addAddress($toEmail, $toName);
+        $mail->isHTML(true);
+        $mail->Subject = 'Verify your Bookify account';
+        $mail->Body = buildVerificationEmailHtml($toName, $otpCode);
+        $mail->AltBody = "Hi {$toName},\n\nYour Bookify email verification code is: {$otpCode}\n\nIt expires in 30 minutes. If you did not create this account, ignore this message.";
+
+        return $mail->send();
+    } catch (\Throwable) {
+        // PHPMailer exceptions may include transport details. Keep logs free of
+        // credentials, verification URLs, recipient data, and plaintext tokens.
+        error_log('Verification email delivery failed during SMTP transport.');
+        return false;
+    }
 }
 
-function buildVerificationEmailHtml(string $name, string $url): string {
-    $safeUrl  = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
-    $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+function buildVerificationEmailHtml(string $name, string $otpCode): string {
+    $safeCode = htmlspecialchars($otpCode, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $safeName = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
     return <<<HTML
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family:monospace;background:#0d1f1a;color:#a0b4ac;padding:40px 24px;margin:0;">
-  <div style="max-width:520px;margin:0 auto;background:#0f2318;border:1px solid #1a2f28;border-radius:12px;padding:40px;">
-    <div style="margin-bottom:28px;">
-      <span style="font-weight:700;font-size:1.1rem;color:#e2f0ea;">Bookify</span>
-    </div>
-    <h2 style="color:#e2f0ea;margin:0 0 16px;font-size:1.3rem;font-weight:700;">Verify your email address</h2>
-    <p style="color:#7a9a90;margin:0 0 24px;line-height:1.75;">Hi {$safeName},</p>
-    <p style="color:#7a9a90;margin:0 0 28px;line-height:1.75;">
-      Thanks for creating a Bookify account. Please verify your email address by clicking the button below.
-      This link expires in <strong style="color:#a0b4ac;">24 hours</strong>.
-    </p>
-    <a href="{$safeUrl}" style="display:inline-block;background:linear-gradient(135deg,#22c55e,#3b82f6);color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:0.9rem;letter-spacing:0.02em;">
-      Verify Email Address
-    </a>
-    <p style="color:#4a6a60;margin:28px 0 0;font-size:0.82rem;line-height:1.75;">
-      If the button does not work, copy this link into your browser:<br>
-      <span style="color:#7a9a90;word-break:break-all;">{$safeUrl}</span>
-    </p>
-    <hr style="border:none;border-top:1px solid #1a2f28;margin:28px 0;">
-    <p style="color:#4a6a60;margin:0;font-size:0.78rem;">
-      If you did not register at Bookify, you can safely ignore this email.
-    </p>
-  </div>
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="font-family:Arial,sans-serif;background:#f3f7f5;color:#23352e;padding:32px 16px;margin:0;">
+  <main style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #dce8e1;border-radius:14px;padding:32px;">
+    <p style="margin:0 0 24px;color:#16834b;font-weight:700;font-size:20px;">Bookify</p>
+    <h1 style="font-size:22px;line-height:1.3;margin:0 0 16px;color:#183328;">Verify your email address</h1>
+    <p style="line-height:1.7;margin:0 0 12px;">Hi {$safeName},</p>
+    <p style="line-height:1.7;margin:0 0 18px;color:#52645b;">Enter this six-digit code in Bookify to confirm your email address. It expires in 30 minutes.</p>
+    <p style="display:inline-block;margin:0 0 24px;padding:14px 20px;border-radius:8px;background:#eef7f1;color:#16834b;font-size:30px;font-weight:700;letter-spacing:0.24em;">{$safeCode}</p>
+    <hr style="border:0;border-top:1px solid #e3ebe6;margin:24px 0;">
+    <p style="font-size:12px;line-height:1.6;color:#78877f;margin:0;">If you did not create a Bookify account, you can ignore this email.</p>
+  </main>
 </body>
 </html>
 HTML;

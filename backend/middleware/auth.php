@@ -9,6 +9,9 @@ function requireAuth(): void {
     if (empty($_SESSION['user_id'])) {
         errorResponse('Authentication required.', 401);
     }
+    if (empty($_SESSION['is_verified'])) {
+        errorResponse('Email verification is required to use this feature.', 403, ['code' => 'email_unverified']);
+    }
 }
 
 function requireVerified(): void {

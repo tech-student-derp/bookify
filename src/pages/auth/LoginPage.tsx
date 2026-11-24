@@ -215,9 +215,10 @@ const LoginPage: FC = () => {
           Email not verified?{' '}
           <Link
             to="/resend-verification"
+            state={{ email }}
             style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}
           >
-            Resend verification email
+            Resend verification code
           </Link>
         </p>
       </div>

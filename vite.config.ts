@@ -1,29 +1,29 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss()
-  ],
-  server: {
-    proxy: {
-      // Vite dev server is at localhost:5173
-      // XAMPP Apache is at localhost:80
-      // The PHP files live at: htdocs/test-php/bookify/backend/...
-      // Apache serves them at: http://localhost/test-php/bookify/backend/...
-      // So we rewrite /backend → /test-php/bookify/backend
-      '/backend': {
-        target: 'http://localhost',
-        changeOrigin: true,
-        rewrite: (path) => `/bookify${path}`,
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+
+  return {
+    define: {
+      // The site key is public; the Turnstile secret is never injected here.
+      'import.meta.env.VITE_TURNSTILE_SITE_KEY': JSON.stringify(env.TURNSTILE_SITE_KEY ?? ''),
+    },
+    plugins: [react(), tailwindcss()],
+    server: {
+      proxy: {
+        '/backend': {
+          target: 'http://localhost',
+          changeOrigin: true,
+          rewrite: (path) => `/bookify${path}`,
+        },
+        '/uploads': {
+          target: 'http://localhost',
+          changeOrigin: true,
+          rewrite: (path) => `/bookify${path}`,
+        },
       },
-      '/uploads': {
-        target: 'http://localhost',
-        changeOrigin: true,
-        rewrite: (path) => `/bookify${path}`,
-      }
-    }
+    },
   }
 })

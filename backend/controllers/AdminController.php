@@ -29,7 +29,8 @@ $roleRequirements = [
     'staff' => ['admin'],
     'staff-update' => ['admin'],
     'seller-applications' => ['admin', 'staff'],
-    'review-seller' => ['admin', 'staff'],
+    // Seller approval changes account privileges and is reserved for admins.
+    'review-seller' => ['admin'],
     'listings' => ['admin', 'staff'],
     'listing-create' => ['admin', 'staff'],
     'review-listing' => ['admin', 'staff'],
@@ -328,7 +329,7 @@ function handleSellerApplications(PDO $db): never {
 
 function handleSellerReview(PDO $db): never {
     requireMethod('POST');
-    $actorId = actor($db, 'admin', 'staff');
+    $actorId = actor($db, 'admin');
     $body = requestBody();
     $id = positiveId($body['application_id'] ?? null, 'application id');
     $decision = $body['decision'] ?? '';

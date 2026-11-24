@@ -19,8 +19,9 @@ CREATE TABLE IF NOT EXISTS users (
   role                            ENUM('customer','seller','staff','admin')
                                                   NOT NULL DEFAULT 'customer',
   is_verified                     TINYINT(1)      NOT NULL DEFAULT 0,
-  verification_token              VARCHAR(64)     NULL,
+  verification_token              VARCHAR(255)    NULL,
   verification_token_expires_at   DATETIME        NULL,
+  verification_attempts           TINYINT UNSIGNED NOT NULL DEFAULT 0,
   resend_requested_at             DATETIME        NULL,
   verified_at                     DATETIME        NULL,
   created_at                      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,

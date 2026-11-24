@@ -14,7 +14,7 @@ interface ProtectedRouteProps {
   allowedRoles?: UserRole[];
 }
 
-const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, requireVerified = false, allowedRoles }) => {
+const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, requireVerified = true, allowedRoles }) => {
   const { authenticated, user, loading } = useAuth();
 
   if (loading) {
@@ -40,12 +40,13 @@ const ProtectedRoute: FC<ProtectedRouteProps> = ({ children, requireVerified = f
     return <Navigate to="/login" replace />;
   }
 
-  if (requireVerified && user && !user.is_verified) {
-    return <Navigate to="/verify-email" replace />;
-  }
-
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (requireVerified && user && !user.is_verified) {
+    const query = new URLSearchParams({ required: '1', email: user.email });
+    return <Navigate to={`/verify-email?${query.toString()}`} replace />;
   }
 
   return <>{children}</>;

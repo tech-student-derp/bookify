@@ -20,7 +20,7 @@ const ResendVerificationPage: FC = () => {
 
     try {
       const data = await resendVerification(email.trim());
-      setMessage(data.message ?? 'If this email is registered and unverified, a new verification link has been sent.');
+      setMessage(data.message ?? 'If this email is registered and unverified, a new verification code will be sent.');
     } catch (err: unknown) {
       const apiErr = err as { message?: string };
       setIsError(true);
@@ -51,7 +51,7 @@ const ResendVerificationPage: FC = () => {
             Resend verification
           </h1>
           <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
-            Enter the email address you registered with to receive a new verification link.
+            Enter the email address you registered with to request a new verification code.
           </p>
         </div>
 
@@ -118,7 +118,7 @@ const ResendVerificationPage: FC = () => {
               cursor: loading ? 'not-allowed' : 'pointer',
             }}
           >
-            {loading ? 'Sending…' : 'Send Verification Email'}
+            {loading ? 'Sending…' : 'Send Verification Code'}
           </button>
         </form>
 
