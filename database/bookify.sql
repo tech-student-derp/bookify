@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS seller_applications (
   id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id      INT UNSIGNED NOT NULL,
+  phone_number VARCHAR(20) NULL,
+  id_document_key VARCHAR(80) NULL,
   status       ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
   applied_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   reviewed_at  DATETIME     NULL,
@@ -45,6 +47,7 @@ CREATE TABLE IF NOT EXISTS seller_applications (
   PRIMARY KEY (id),
   KEY idx_seller_applications_user (user_id),
   KEY idx_seller_applications_status (status),
+  UNIQUE KEY uq_seller_applications_id_document_key (id_document_key),
   CONSTRAINT fk_sa_user    FOREIGN KEY (user_id)     REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT fk_sa_reviewer FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

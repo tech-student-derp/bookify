@@ -1,4 +1,5 @@
 import { useState, useCallback, type FC } from 'react';
+import { Link } from 'react-router-dom';
 import TypewriterText from './TypewriterText';
 import IsometricBookshelf from './IsometricBookshelf';
 import { getRandomLanguage, languages, type LanguageEntry } from '../data/translations';
@@ -133,8 +134,8 @@ const HeroSection: FC = () => {
               Explore Books
             </a>
 
-            <a
-              href="#sell"
+            <Link
+              to="/seller-application"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -165,7 +166,7 @@ const HeroSection: FC = () => {
               }}
             >
               Start Selling
-            </a>
+            </Link>
           </div>
 
           {/* Stat chips */}

@@ -11,6 +11,7 @@ require_once __DIR__ . '/../utils/csrf.php';
 require_once __DIR__ . '/../utils/validation.php';
 require_once __DIR__ . '/../utils/audit.php';
 require_once __DIR__ . '/../middleware/auth.php';
+require_once __DIR__ . '/../utils/seller_id_documents.php';
 
 set_exception_handler(static function (Throwable $e): void {
     error_log('Back-office API error: ' . $e->getMessage());
@@ -29,6 +30,7 @@ $roleRequirements = [
     'staff' => ['admin'],
     'staff-update' => ['admin'],
     'seller-applications' => ['admin', 'staff'],
+    'seller-id-document' => ['admin'],
     // Seller approval changes account privileges and is reserved for admins.
     'review-seller' => ['admin'],
     'listings' => ['admin', 'staff'],
@@ -49,6 +51,7 @@ match ($action) {
     'staff' => handleStaff($db),
     'staff-update' => handleStaffUpdate($db),
     'seller-applications' => handleSellerApplications($db),
+    'seller-id-document' => handleSellerIdDocument($db),
     'review-seller' => handleSellerReview($db),
     'listings' => handleListings($db),
     'listing-create' => handleListingCreate($db),
@@ -317,14 +320,64 @@ function handleSellerApplications(PDO $db): never {
     $countStmt = $db->prepare('SELECT COUNT(*)' . $base . $whereSql);
     foreach ($params as $key => $value) $countStmt->bindValue($key, $value, PDO::PARAM_STR);
     $countStmt->execute(); $total = (int) $countStmt->fetchColumn();
+    $applicationFields = hasSellerApplicationVerificationColumns($db)
+        ? 'COALESCE(a.phone_number, u.contact_number) AS contact_number, (a.id_document_key IS NOT NULL) AS has_id_document'
+        : 'u.contact_number, 0 AS has_id_document';
     $stmt = $db->prepare(
         'SELECT a.id, a.user_id, a.status, a.applied_at, a.reviewed_at, a.reviewed_by, a.notes,
-                u.first_name, u.last_name, u.email, u.contact_number, u.is_verified, u.account_status, u.role'
+                u.first_name, u.last_name, u.email, ' . $applicationFields . ', u.is_verified, u.account_status, u.role'
         . $base . $whereSql . ' ORDER BY a.applied_at DESC, a.id DESC LIMIT :limit OFFSET :offset'
     );
     foreach ($params as $key => $value) $stmt->bindValue($key, $value, PDO::PARAM_STR);
     $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT); $stmt->bindValue(':offset', $offset, PDO::PARAM_INT); $stmt->execute();
-    successResponse(['applications' => $stmt->fetchAll(), 'total' => $total, 'page' => $page, 'per_page' => $perPage]);
+    $applications = $stmt->fetchAll();
+    foreach ($applications as &$application) $application['has_id_document'] = (bool) $application['has_id_document'];
+    unset($application);
+    successResponse(['applications' => $applications, 'total' => $total, 'page' => $page, 'per_page' => $perPage]);
+}
+
+function handleSellerIdDocument(PDO $db): never {
+    requireMethod('GET');
+    if (!hasSellerApplicationVerificationColumns($db)) {
+        errorResponse('Apply the seller application verification migration before viewing ID documents.', 503);
+    }
+    $applicationId = positiveId($_GET['application_id'] ?? null, 'application id');
+    $stmt = $db->prepare('SELECT id_document_key FROM seller_applications WHERE id = ? LIMIT 1');
+    $stmt->execute([$applicationId]);
+    $key = $stmt->fetchColumn();
+    if (!is_string($key) || !preg_match('/^[a-f0-9]{32}\.(jpg|png)$/D', $key)) {
+        errorResponse('ID document not found.', 404);
+    }
+
+    try {
+        $path = sellerIdStorageDirectory() . DIRECTORY_SEPARATOR . $key;
+    } catch (Throwable) {
+        errorResponse('ID document storage is unavailable.', 503);
+    }
+    if (!is_file($path) || !is_readable($path)) errorResponse('ID document not found.', 404);
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($path);
+    $image = @getimagesize($path);
+    if (!in_array($mime, ['image/jpeg', 'image/png'], true) || !$image || ($image['mime'] ?? null) !== $mime) {
+        errorResponse('ID document not found.', 404);
+    }
+
+    // Audit access by actor and application only. Never log document contents or paths.
+    recordAdminAudit($db, actor($db, 'admin'), 'seller_application.id_document_viewed', 'seller_application', $applicationId);
+    while (ob_get_level() > 0) ob_end_clean();
+    header('Content-Type: ' . $mime);
+    header('Content-Length: ' . (string) filesize($path));
+    header('Content-Disposition: inline; filename="seller-id-' . $applicationId . '.' . ($mime === 'image/jpeg' ? 'jpg' : 'png') . '"');
+    header('Cache-Control: private, no-store, max-age=0');
+    header('Pragma: no-cache');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: no-referrer');
+    $stream = fopen($path, 'rb');
+    if ($stream === false) errorResponse('ID document could not be read.', 500);
+    fpassthru($stream);
+    fclose($stream);
+    exit;
 }
 
 function handleSellerReview(PDO $db): never {
@@ -408,7 +461,7 @@ function handleListingCreate(PDO $db): never {
     $price = $body['price'] ?? null;
     $cover = bodyText($body, 'cover_image_path', 500);
     if ($title === '' || $author === '' || $category === '') errorResponse('Title, author, and category are required.', 422);
-    if (!in_array($condition, ['New', 'Pre-owned'], true)) errorResponse('Choose a valid book condition.', 422);
+    if (!in_array($condition, ['New', 'Like New', 'Very Good', 'Good', 'Acceptable', 'Pre-owned'], true)) errorResponse('Choose a valid book condition.', 422);
     if (!in_array($format, ['Physical', 'E-book'], true)) errorResponse('Choose a valid book format.', 422);
     if (!is_numeric($price) || (float) $price <= 0 || (float) $price > 99999999.99) errorResponse('Enter a valid book price.', 422);
     if ($cover !== '' && (!preg_match('#^/?uploads/books/[A-Za-z0-9._/-]+$#', $cover) || str_contains($cover, '..'))) {

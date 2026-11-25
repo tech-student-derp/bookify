@@ -14,7 +14,7 @@ interface AuthContextValue {
   user: User | null;
   authenticated: boolean;
   loading: boolean;
-  refreshAuth: () => Promise<void>;
+  refreshAuth: () => Promise<User | null>;
   logout: () => Promise<void>;
   setUser: (user: User | null) => void;
 }
@@ -26,14 +26,16 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const refreshAuth = useCallback(async () => {
+  const refreshAuth = useCallback(async (): Promise<User | null> => {
     try {
       const data = await getMe();
       setUser(data.user);
       setAuthenticated(data.authenticated);
+      return data.user;
     } catch {
       setUser(null);
       setAuthenticated(false);
+      return null;
     } finally {
       setLoading(false);
     }

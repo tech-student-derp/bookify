@@ -6,7 +6,7 @@ type Book = {
   title: string;
   author: string;
   price: number;
-  condition: 'New' | 'Pre-owned';
+  condition: 'New' | 'Like New' | 'Very Good' | 'Good' | 'Acceptable' | 'Pre-owned';
   format: 'Physical' | 'E-book';
   category: string;
   cover_url: string | null;
@@ -157,7 +157,7 @@ const MarketplacePage: FC = () => {
                 <header className="filter-dialog-header"><div><span className="market-eyebrow">REFINE YOUR SEARCH</span><h2 id="filter-dialog-title">Filters</h2></div><button type="button" className="filter-close" onClick={() => setFilterOpen(false)} aria-label="Close filters">×</button></header>
                 <div className="filter-dialog-body">
                   <label>Category<select value={draftFilters.category} onChange={(event) => setDraftFilters({ ...draftFilters, category: event.target.value })}><option value="">All categories</option>{categories.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-                  <label>Condition<select value={draftFilters.condition} onChange={(event) => setDraftFilters({ ...draftFilters, condition: event.target.value })}><option value="">Any condition</option><option>New</option><option>Pre-owned</option></select></label>
+ <label>Condition<select value={draftFilters.condition} onChange={(event) => setDraftFilters({ ...draftFilters, condition: event.target.value })}><option value="">Any condition</option><option>New</option><option>Like New</option><option>Very Good</option><option>Good</option><option>Acceptable</option><option>Pre-owned</option></select></label>
                   <label>Format<select value={draftFilters.format} onChange={(event) => setDraftFilters({ ...draftFilters, format: event.target.value })}><option value="">Any format</option><option>Physical</option><option>E-book</option></select></label>
                   <fieldset><legend>Price range (₱)</legend><div className="price-inputs"><input aria-label="Minimum price" type="number" min="0" placeholder="Min" value={draftFilters.minPrice} onChange={(event) => setDraftFilters({ ...draftFilters, minPrice: event.target.value })} /><input aria-label="Maximum price" type="number" min="0" placeholder="Max" value={draftFilters.maxPrice} onChange={(event) => setDraftFilters({ ...draftFilters, maxPrice: event.target.value })} /></div></fieldset>
                 </div>

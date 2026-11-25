@@ -4,7 +4,7 @@ import type { User } from '../../../types/auth';
 
 interface OverviewTabProps {
   user: User;
-  onNavigateTab: (tab: 'orders' | 'wishlist' | 'settings' | 'seller') => void;
+  onNavigateTab: (tab: 'orders' | 'wishlist' | 'settings') => void;
 }
 
 export const OverviewTab: FC<OverviewTabProps> = ({ user, onNavigateTab }) => {

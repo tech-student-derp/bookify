@@ -56,7 +56,7 @@ $category = isset($_GET['category']) && is_string($_GET['category']) ? trim($_GE
 $condition = isset($_GET['condition']) && is_string($_GET['condition']) ? $_GET['condition'] : '';
 $format = isset($_GET['format']) && is_string($_GET['format']) ? $_GET['format'] : '';
 if ($category !== '' && strlen($category) > 100) errorResponse('Invalid category filter.', 422);
-if ($condition !== '' && !in_array($condition, ['New', 'Pre-owned'], true)) errorResponse('Invalid condition filter.', 422);
+if ($condition !== '' && !in_array($condition, ['New', 'Like New', 'Very Good', 'Good', 'Acceptable', 'Pre-owned'], true)) errorResponse('Invalid condition filter.', 422);
 if ($format !== '' && !in_array($format, ['Physical', 'E-book'], true)) errorResponse('Invalid format filter.', 422);
 $minPrice = $_GET['min_price'] ?? '';
 $maxPrice = $_GET['max_price'] ?? '';

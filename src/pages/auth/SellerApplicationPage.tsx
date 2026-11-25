@@ -1,34 +1,64 @@
-import { type FC, useEffect, useState } from 'react';
+import { type FC, useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCurrentSellerApplication, submitSellerApplication, type SellerApplication } from '../../services/sellerApplicationApi';
 
 const SellerApplicationPage: FC = () => {
-  const { user } = useAuth();
+  const { user, refreshAuth } = useAuth();
   const [application, setApplication] = useState<SellerApplication | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState(user?.contact_number ?? '');
+  const [idDocument, setIdDocument] = useState<File | null>(null);
+  const [phoneError, setPhoneError] = useState('');
+  const [documentError, setDocumentError] = useState('');
 
-  const refreshApplication = async () => {
+  const refreshApplication = useCallback(async () => {
     const result = await getCurrentSellerApplication();
     setApplication(result.application);
-  };
+    if (result.application?.status === 'approved' && user?.role !== 'seller') {
+      await refreshAuth();
+    }
+  }, [refreshAuth, user?.role]);
 
   useEffect(() => {
     let active = true;
-    getCurrentSellerApplication()
-      .then((result) => { if (active) setApplication(result.application); })
-      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : 'Could not load your application.'); })
-      .finally(() => { if (active) setLoading(false); });
+    const loadApplication = async () => {
+      try {
+        const result = await getCurrentSellerApplication();
+        if (!active) return;
+        setApplication(result.application);
+        if (result.application?.status === 'approved' && user?.role !== 'seller') {
+          await refreshAuth();
+        }
+      } catch (reason: unknown) {
+        if (active) setError(reason instanceof Error ? reason.message : 'Could not load your application.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void loadApplication();
     return () => { active = false; };
-  }, []);
+  }, [refreshAuth, user?.role]);
 
-  const apply = async () => {
+  const apply = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedPhone = phoneNumber.trim();
+    const validPhone = /^(?:\+?63|0)9\d{9}$/.test(normalizedPhone);
+    const extension = idDocument?.name.split('.').pop()?.toLowerCase();
+    const validDocument = !!idDocument
+      && ['jpg', 'jpeg', 'png'].includes(extension ?? '')
+      && idDocument.size > 0
+      && idDocument.size <= 5 * 1024 * 1024;
+    setPhoneError(validPhone ? '' : 'Enter a valid Philippine mobile number (e.g. 09171234567 or +639171234567).');
+    setDocumentError(validDocument ? '' : 'Choose a valid JPG, JPEG, or PNG image up to 5 MB.');
+    if (!validPhone || !idDocument || !validDocument) return;
+
     setSubmitting(true);
     setError('');
     try {
-      await submitSellerApplication();
+      await submitSellerApplication(normalizedPhone, idDocument);
       await refreshApplication();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not submit your application.');
@@ -99,9 +129,23 @@ const SellerApplicationPage: FC = () => {
           {application && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '10px 0 0' }}>Submitted {new Date(application.applied_at).toLocaleDateString('en-PH')}{application.reviewed_at ? ` · reviewed ${new Date(application.reviewed_at).toLocaleDateString('en-PH')}` : ''}</p>}
           {application?.status === 'rejected' && application.notes && <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '10px 0 0' }}>Review note: {application.notes}</p>}
           {error && <p role="alert" style={{ fontSize: '0.82rem', color: 'oklch(55% 0.2 25)', margin: '12px 0 0' }}>{error}</p>}
-          {!loading && user?.role === 'customer' && user.is_verified && application?.status !== 'pending' && application?.status !== 'approved' && <button type="button" onClick={apply} disabled={submitting} style={{ marginTop: '16px', padding: '10px 16px', border: 0, borderRadius: '8px', color: 'white', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', font: 'inherit', fontSize: '.82rem', fontWeight: 600, cursor: submitting ? 'wait' : 'pointer' }}>{submitting ? 'Submitting…' : application?.status === 'rejected' ? 'Apply again' : 'Submit seller application'}</button>}
+          {!loading && user?.role === 'customer' && user.is_verified && application?.status !== 'pending' && application?.status !== 'approved' && <form onSubmit={apply} noValidate style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <label htmlFor="seller-phone-number" style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>Phone number <span aria-hidden="true">*</span></label>
+              <input id="seller-phone-number" name="phone_number" type="tel" autoComplete="tel" maxLength={20} required value={phoneNumber} onChange={(event) => { setPhoneNumber(event.target.value); setPhoneError(''); }} placeholder="09171234567 or +639171234567" aria-invalid={!!phoneError} aria-describedby="seller-phone-help" style={{ width: '100%', padding: '10px 12px', border: `1px solid ${phoneError ? 'oklch(55% 0.2 25)' : 'var(--border)'}`, borderRadius: '8px', background: 'var(--bg)', color: 'var(--text)', font: 'inherit', fontSize: '0.84rem', boxSizing: 'border-box' }} />
+              <small id="seller-phone-help" style={{ display: 'block', marginTop: '5px', color: 'var(--text-muted)', fontSize: '0.72rem' }}>Use a Philippine mobile number.</small>
+              {phoneError && <small id="seller-phone-error" role="alert" style={{ display: 'block', marginTop: '5px', color: 'oklch(55% 0.2 25)', fontSize: '0.75rem' }}>{phoneError}</small>}
+            </div>
+            <div>
+              <label htmlFor="seller-id-document" style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>Government-issued ID <span aria-hidden="true">*</span></label>
+              <input id="seller-id-document" name="id_document" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required onChange={(event) => { setIdDocument(event.target.files?.[0] ?? null); setDocumentError(''); }} aria-invalid={!!documentError} aria-describedby="seller-id-help" style={{ display: 'block', width: '100%', padding: '8px', border: `1px solid ${documentError ? 'oklch(55% 0.2 25)' : 'var(--border)'}`, borderRadius: '8px', background: 'var(--bg)', color: 'var(--text)', font: 'inherit', fontSize: '0.78rem', boxSizing: 'border-box' }} />
+              <small id="seller-id-help" style={{ display: 'block', marginTop: '5px', color: 'var(--text-muted)', fontSize: '0.72rem' }}>JPG, JPEG, or PNG up to 5 MB. A National ID is recommended. Use a fictional/sample ID for presentation testing.</small>
+              {documentError && <small id="seller-id-error" role="alert" style={{ display: 'block', marginTop: '5px', color: 'oklch(55% 0.2 25)', fontSize: '0.75rem' }}>{documentError}</small>}
+            </div>
+            <button type="submit" disabled={submitting} style={{ alignSelf: 'flex-start', padding: '10px 16px', border: 0, borderRadius: '8px', color: 'white', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', font: 'inherit', fontSize: '.82rem', fontWeight: 600, cursor: submitting ? 'wait' : 'pointer' }}>{submitting ? 'Submitting…' : application?.status === 'rejected' ? 'Apply again' : 'Submit seller application'}</button>
+          </form>}
           {user && !user.is_verified && <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '14px 0 0' }}>Verify your email before applying. <Link to="/resend-verification" style={{ color: 'var(--accent)' }}>Verify your account</Link></p>}
-          {application?.status === 'approved' && <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '14px 0 0' }}>Your account is approved as a seller. Seller listing tools are still being built.</p>}
+          {application?.status === 'approved' && <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '14px 0 0' }}>Your account is approved as a seller. <Link to="/seller/overview" style={{ color: 'var(--accent)', fontWeight: 600 }}>Open your Seller Dashboard</Link></p>}
         </div>
 
         {/* What to expect */}

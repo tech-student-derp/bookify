@@ -33,7 +33,6 @@ export const DashboardHeader: FC<DashboardHeaderProps> = ({
     orders: 'My Orders',
     wishlist: 'Saved Books',
     settings: 'Account Settings',
-    seller: 'Seller Portal (Preview)',
   };
 
   useEffect(() => {
@@ -370,30 +369,6 @@ export const DashboardHeader: FC<DashboardHeaderProps> = ({
                   Account Settings
                 </button>
 
-                <button
-                  onClick={() => { onSelectTab('seller'); setDropdownOpen(false); }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 16px',
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--text-muted)',
-                    fontSize: '0.82rem',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    fontFamily: "'Geist Mono', monospace",
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                >
-                  <span>Seller Portal</span>
-                  <span style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}>
-                    Locked
-                  </span>
-                </button>
               </div>
 
               <div style={{ borderTop: '1px solid var(--border)', padding: '6px 0' }}>

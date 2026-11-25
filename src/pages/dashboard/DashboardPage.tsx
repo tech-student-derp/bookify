@@ -1,5 +1,5 @@
-import { useState, useEffect, type FC } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useState, type FC } from 'react';
+import { useSearchParams, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../hooks/useTheme';
 import { DashboardSidebar, type DashboardTab } from './DashboardSidebar';
@@ -8,7 +8,6 @@ import { OverviewTab } from './tabs/OverviewTab';
 import { OrdersTab } from './tabs/OrdersTab';
 import { WishlistTab } from './tabs/WishlistTab';
 import { SettingsTab } from './tabs/SettingsTab';
-import { SellerTab } from './tabs/SellerTab';
 
 interface DashboardPageProps {
   initialTab?: DashboardTab;
@@ -21,21 +20,13 @@ const DashboardPage: FC<DashboardPageProps> = ({ initialTab = 'overview' }) => {
   const navigate = useNavigate();
 
   // Active tab state: query param ?tab=... overrides default
-  const paramTab = searchParams.get('tab') as DashboardTab | null;
-  const validTabs: DashboardTab[] = ['overview', 'orders', 'wishlist', 'settings', 'seller'];
-  const defaultTab = paramTab && validTabs.includes(paramTab) ? paramTab : initialTab;
-
-  const [activeTab, setActiveTab] = useState<DashboardTab>(defaultTab);
+  const requestedTab = searchParams.get('tab');
+  const paramTab = requestedTab as DashboardTab | null;
+  const validTabs: DashboardTab[] = ['overview', 'orders', 'wishlist', 'settings'];
+  const activeTab = paramTab && validTabs.includes(paramTab) ? paramTab : initialTab;
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  useEffect(() => {
-    if (paramTab && validTabs.includes(paramTab)) {
-      setActiveTab(paramTab);
-    }
-  }, [paramTab]);
-
   const handleSelectTab = (tab: DashboardTab) => {
-    setActiveTab(tab);
     setSearchParams(tab === 'overview' ? {} : { tab });
   };
 
@@ -45,6 +36,15 @@ const DashboardPage: FC<DashboardPageProps> = ({ initialTab = 'overview' }) => {
   };
 
   if (!user) return null;
+
+  if (requestedTab === 'seller') {
+    const destination = user.role === 'seller'
+      ? '/seller/overview'
+      : user.role === 'customer'
+        ? '/seller-application'
+        : '/dashboard';
+    return <Navigate to={destination} replace />;
+  }
 
   return (
     <div
@@ -108,7 +108,6 @@ const DashboardPage: FC<DashboardPageProps> = ({ initialTab = 'overview' }) => {
 
           {activeTab === 'settings' && <SettingsTab user={user} />}
 
-          {activeTab === 'seller' && <SellerTab user={user} />}
         </main>
       </div>
     </div>

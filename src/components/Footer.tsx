@@ -1,4 +1,5 @@
 import { type FC } from 'react';
+import { Link } from 'react-router-dom';
 import { useIntersectionFade } from '../hooks/useIntersectionFade';
 
 const BookIcon: FC = () => (
@@ -39,7 +40,7 @@ const footerLinks = {
   ],
   Account: [
     { label: 'Sign In', href: '#signin' },
-    { label: 'Get Started', href: '#get-started' },
+    { label: 'Get Started', href: '/seller-application' },
     { label: 'Privacy Policy', href: '#' },
     { label: 'Terms of Service', href: '#' },
   ],
@@ -158,23 +159,43 @@ const Footer: FC = () => {
               >
                 {links.map((link) => (
                   <li key={link.label}>
-                    <a
-                      href={link.href}
-                      style={{
-                        textDecoration: 'none',
-                        fontSize: '0.85rem',
-                        color: '#7a9a90',
-                        transition: 'color 0.2s',
-                      }}
-                      onMouseEnter={(e) =>
-                        ((e.currentTarget as HTMLAnchorElement).style.color = '#4ade80')
-                      }
-                      onMouseLeave={(e) =>
-                        ((e.currentTarget as HTMLAnchorElement).style.color = '#7a9a90')
-                      }
-                    >
-                      {link.label}
-                    </a>
+                    {link.href === '/seller-application' ? (
+                      <Link
+                        to={link.href}
+                        style={{
+                          textDecoration: 'none',
+                          fontSize: '0.85rem',
+                          color: '#7a9a90',
+                          transition: 'color 0.2s',
+                        }}
+                        onMouseEnter={(e) =>
+                          ((e.currentTarget as HTMLAnchorElement).style.color = '#4ade80')
+                        }
+                        onMouseLeave={(e) =>
+                          ((e.currentTarget as HTMLAnchorElement).style.color = '#7a9a90')
+                        }
+                      >
+                        {link.label}
+                      </Link>
+                    ) : (
+                      <a
+                        href={link.href}
+                        style={{
+                          textDecoration: 'none',
+                          fontSize: '0.85rem',
+                          color: '#7a9a90',
+                          transition: 'color 0.2s',
+                        }}
+                        onMouseEnter={(e) =>
+                          ((e.currentTarget as HTMLAnchorElement).style.color = '#4ade80')
+                        }
+                        onMouseLeave={(e) =>
+                          ((e.currentTarget as HTMLAnchorElement).style.color = '#7a9a90')
+                        }
+                      >
+                        {link.label}
+                      </a>
+                    )}
                   </li>
                 ))}
               </ul>

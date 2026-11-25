@@ -2,7 +2,7 @@ import { type FC } from 'react';
 import { Link } from 'react-router-dom';
 import type { User } from '../../types/auth';
 
-export type DashboardTab = 'overview' | 'orders' | 'wishlist' | 'settings' | 'seller';
+export type DashboardTab = 'overview' | 'orders' | 'wishlist' | 'settings';
 
 interface DashboardSidebarProps {
   user: User;
@@ -66,15 +66,6 @@ export const DashboardSidebar: FC<DashboardSidebarProps> = ({
         </svg>
       ),
     },
-  ];
-
-  const sellerNav = [
-    { label: 'Seller Overview' },
-    { label: 'My Listings' },
-    { label: 'Add a Book' },
-    { label: 'Sales & Orders' },
-    { label: 'Earnings' },
-    { label: 'Seller Settings' },
   ];
 
   return (
@@ -340,100 +331,47 @@ export const DashboardSidebar: FC<DashboardSidebarProps> = ({
             </div>
           </div>
 
-          {/* Seller Navigation Section (Disabled / Placeholder) */}
-          <div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0 8px 8px',
-              }}
-            >
-              <span
+          {user.role === 'seller' && (
+            <div>
+              <div
                 style={{
                   fontSize: '0.68rem',
                   fontWeight: 600,
                   letterSpacing: '0.1em',
                   textTransform: 'uppercase',
                   color: 'var(--text-muted)',
+                  padding: '0 8px 8px',
                 }}
               >
                 Seller Hub
-              </span>
-              <span
+              </div>
+              <Link
+                to="/seller/overview"
+                onClick={onClose}
                 style={{
-                  fontSize: '0.62rem',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  color: 'var(--text)',
+                  fontSize: '0.84rem',
                   fontWeight: 600,
-                  padding: '1px 6px',
-                  borderRadius: '999px',
-                  background: 'oklch(65% 0.18 60 / 0.12)',
-                  color: 'oklch(65% 0.18 60)',
-                  border: '1px solid oklch(65% 0.18 60 / 0.3)',
-                  textTransform: 'uppercase',
+                  textDecoration: 'none',
+                  transition: 'background 0.15s, color 0.15s',
                 }}
+                onMouseEnter={(event) => { event.currentTarget.style.background = 'var(--surface-hover)'; event.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={(event) => { event.currentTarget.style.background = 'transparent'; event.currentTarget.style.color = 'var(--text)'; }}
               >
-                Coming Soon
-              </span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                </svg>
+                Seller Dashboard
+              </Link>
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {sellerNav.map((s) => (
-                <button
-                  key={s.label}
-                  onClick={() => {
-                    onSelectTab('seller');
-                    onClose();
-                  }}
-                  title="Seller features are currently disabled. Click to view preview."
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: activeTab === 'seller' ? 'var(--surface-hover)' : 'transparent',
-                    color: 'var(--text-muted)',
-                    opacity: 0.65,
-                    fontSize: '0.82rem',
-                    fontFamily: "'Geist Mono', monospace",
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'opacity 0.2s, background 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.opacity = '1';
-                    e.currentTarget.style.background = 'var(--surface-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.opacity = '0.65';
-                    if (activeTab !== 'seller') e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                    {s.label}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '0.6rem',
-                      padding: '1px 5px',
-                      borderRadius: '4px',
-                      background: 'var(--bg-secondary)',
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    Lock
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Sidebar Footer */}

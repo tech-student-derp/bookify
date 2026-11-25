@@ -44,11 +44,11 @@ export interface ManagedStaff extends ManagedUser { role: 'staff'; contact_numbe
 export interface SellerApplicationRecord {
   id: number; user_id: number; status: 'pending' | 'approved' | 'rejected'; applied_at: string; reviewed_at: string | null;
   reviewed_by: number | null; notes: string | null; first_name: string; last_name: string; email: string;
-  contact_number: string | null; is_verified: boolean; account_status: 'active' | 'suspended'; role: string;
+  contact_number: string | null; has_id_document: boolean | number; is_verified: boolean; account_status: 'active' | 'suspended'; role: string;
 }
 export interface ManagedListing {
   id: number; title: string; author: string; description: string | null; cover_image_path: string | null; category: string;
-  price: string; condition: 'New' | 'Pre-owned'; format: 'Physical' | 'E-book'; source: 'seller' | 'bookify';
+  price: string; condition: 'New' | 'Like New' | 'Very Good' | 'Good' | 'Acceptable' | 'Pre-owned'; format: 'Physical' | 'E-book'; source: 'seller' | 'bookify';
   seller_id: number | null; created_by: number; listing_status: 'pending' | 'approved' | 'rejected' | 'suspended';
   publication_status: 'draft' | 'published' | 'unpublished'; availability: 'available' | 'unavailable';
   moderation_reason: string | null; reviewed_at: string | null; created_at: string;

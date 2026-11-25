@@ -8,14 +8,13 @@ export interface SellerApplication {
   notes: string | null;
 }
 
-async function request<T>(action: 'current' | 'apply', method: 'GET' | 'POST' = 'GET'): Promise<T> {
+async function request<T>(action: 'current' | 'apply', method: 'GET' | 'POST' = 'GET', body?: FormData): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (method === 'POST') {
-    headers['Content-Type'] = 'application/json';
     headers['X-CSRF-Token'] = await getCsrfToken();
   }
   const response = await fetch(`/backend/controllers/SellerApplicationController.php?action=${action}`, {
-    method, credentials: 'include', headers, body: method === 'POST' ? '{}' : undefined,
+    method, credentials: 'include', headers, body,
   });
   const data = await response.json() as { success: boolean; message?: string } & Record<string, unknown>;
   if (!response.ok || !data.success) throw new Error(data.message || 'Seller application request failed.');
@@ -26,6 +25,9 @@ export function getCurrentSellerApplication() {
   return request<{ application: SellerApplication | null }>('current');
 }
 
-export function submitSellerApplication() {
-  return request<{ message: string; application_id: number }>('apply', 'POST');
+export function submitSellerApplication(phoneNumber: string, idDocument: File) {
+  const body = new FormData();
+  body.set('phone_number', phoneNumber);
+  body.set('id_document', idDocument);
+  return request<{ message: string; application_id: number }>('apply', 'POST', body);
 }

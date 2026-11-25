@@ -1,4 +1,5 @@
 import { type FC } from 'react';
+import { Link } from 'react-router-dom';
 import { useIntersectionFade } from '../hooks/useIntersectionFade';
 
 const sellerFeatures = [
@@ -97,8 +98,8 @@ const SellerIntroduction: FC = () => {
             </p>
 
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <a
-                href="#get-started"
+              <Link
+                to="/seller-application"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -123,7 +124,7 @@ const SellerIntroduction: FC = () => {
                 }}
               >
                 Start Selling Free
-              </a>
+              </Link>
               <a
                 href="#learn-more"
                 style={{

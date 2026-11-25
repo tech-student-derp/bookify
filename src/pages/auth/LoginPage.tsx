@@ -57,8 +57,9 @@ const LoginPage: FC = () => {
     setLoading(true);
     try {
       const session = await login({ email: email.trim(), password });
-      await refreshAuth();
-      navigate(session.user.role === 'admin' ? '/admin' : session.user.role === 'staff' ? '/staff' : '/dashboard');
+      const refreshedUser = await refreshAuth();
+      const role = refreshedUser?.role ?? session.user.role;
+      navigate(role === 'admin' ? '/admin' : role === 'staff' ? '/staff' : role === 'seller' ? '/seller/overview' : '/dashboard');
     } catch (err: unknown) {
       const apiErr = err as { message?: string };
       setError(apiErr.message ?? 'Login failed. Please try again.');
