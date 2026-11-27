@@ -48,7 +48,7 @@ export const SellerLayout: FC<SellerLayoutProps> = ({
 
         {/* Footer */}
         <footer className="py-4 px-6 md:px-8 border-t border-[var(--border)] text-xs font-mono text-[var(--text-muted)] flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Bookify Seller Workspace • Phase 2 Foundation</span>
+          <span>Bookify Seller Workspace</span>
           <span className="text-[11px] text-[var(--text-muted)]/70">
             Academic Information Management Project
           </span>

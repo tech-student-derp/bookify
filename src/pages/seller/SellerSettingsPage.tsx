@@ -1,5 +1,6 @@
 import { type FC, useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { BannerCropEditor } from '../../components/BannerCropEditor';
 import {
   getSellerProfile,
   saveSellerProfile,
@@ -27,6 +28,54 @@ interface FormData {
 }
 
 type FormErrors = Partial<Record<keyof FormData, string>>;
+type PickupField = 'pickup_address_line' | 'pickup_barangay' | 'pickup_city' | 'pickup_province' | 'pickup_region' | 'pickup_postal_code';
+type PickupSuggestion = Partial<Pick<FormData, PickupField>>;
+
+const pickupFields: PickupField[] = [
+  'pickup_address_line',
+  'pickup_barangay',
+  'pickup_city',
+  'pickup_province',
+  'pickup_region',
+  'pickup_postal_code',
+];
+
+interface PhotonResponse {
+  features?: Array<{ properties?: Record<string, unknown> }>;
+}
+
+function firstText(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === 'string' && value.trim() !== '')?.trim();
+}
+
+function pickupSuggestionFromPhoton(properties: Record<string, unknown>): PickupSuggestion {
+  const street = firstText(properties.street, properties.road);
+  const houseNumber = firstText(properties.housenumber);
+  return {
+    ...(street ? { pickup_address_line: [houseNumber, street].filter(Boolean).join(' ') } : {}),
+    ...((firstText(properties.suburb, properties.neighbourhood, properties.district, properties.quarter))
+      ? { pickup_barangay: firstText(properties.suburb, properties.neighbourhood, properties.district, properties.quarter) }
+      : {}),
+    ...((firstText(properties.city, properties.town, properties.municipality, properties.village, properties.locality))
+      ? { pickup_city: firstText(properties.city, properties.town, properties.municipality, properties.village, properties.locality) }
+      : {}),
+    ...((firstText(properties.county, properties.state_district))
+      ? { pickup_province: firstText(properties.county, properties.state_district) }
+      : {}),
+    ...(firstText(properties.state) ? { pickup_region: firstText(properties.state) } : {}),
+    ...(firstText(properties.postcode) ? { pickup_postal_code: firstText(properties.postcode) } : {}),
+  };
+}
+
+function geolocationErrorMessage(error: GeolocationPositionError): string {
+  if (error.code === error.PERMISSION_DENIED) {
+    return 'Location permission was denied or cancelled. You can allow it in your browser settings and try again, or enter the pickup address manually.';
+  }
+  if (error.code === error.POSITION_UNAVAILABLE) {
+    return 'Your approximate location is unavailable right now. Please enter the pickup address manually.';
+  }
+  return 'The location request timed out. Please try again when ready, or enter the pickup address manually.';
+}
 
 const emptyForm: FormData = {
   store_name: '',
@@ -74,10 +123,16 @@ export const SellerSettingsPage: FC = () => {
   // Image uploads
   const [logoPath, setLogoPath] = useState<string | null>(null);
   const [bannerPath, setBannerPath] = useState<string | null>(null);
+  const [bannerDraft, setBannerDraft] = useState<File | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
+  const [locatingPickup, setLocatingPickup] = useState(false);
+  const [locationNotice, setLocationNotice] = useState<string | null>(null);
+  const [pickupSuggestion, setPickupSuggestion] = useState<PickupSuggestion | null>(null);
+  const [appliedLocationSuggestion, setAppliedLocationSuggestion] = useState(false);
+  const [locationSuggestionConfirmed, setLocationSuggestionConfirmed] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,6 +164,9 @@ export const SellerSettingsPage: FC = () => {
 
   const updateField = (field: keyof FormData, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (pickupFields.includes(field as PickupField) && appliedLocationSuggestion) {
+      setLocationSuggestionConfirmed(false);
+    }
     // Clear field error on change
     if (errors[field]) {
       setErrors((prev) => {
@@ -170,6 +228,11 @@ export const SellerSettingsPage: FC = () => {
     setSuccessMsg(null);
     setGeneralError(null);
 
+    if (appliedLocationSuggestion && !locationSuggestionConfirmed) {
+      setGeneralError('Review the suggested pickup fields and confirm them before saving.');
+      return;
+    }
+
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
@@ -196,6 +259,8 @@ export const SellerSettingsPage: FC = () => {
       setHasProfile(true);
       setForm(profileToForm(data.profile));
       setSuccessMsg(data.message ?? 'Store profile saved successfully.');
+      setAppliedLocationSuggestion(false);
+      setLocationSuggestionConfirmed(false);
     } catch (err: unknown) {
       const apiErr = err as ApiErrorResponse;
       if (apiErr?.errors) {
@@ -229,23 +294,99 @@ export const SellerSettingsPage: FC = () => {
     }
   };
 
-  const handleBannerSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBannerSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (bannerInputRef.current) bannerInputRef.current.value = '';
 
+    setBannerError(null);
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setBannerError('Only JPEG, PNG, and WebP image formats are permitted.');
+      return;
+    }
+    if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
+      setBannerError('Uploaded image cannot exceed 5 MB.');
+      return;
+    }
+    setBannerDraft(file);
+  };
+
+  const handleBannerConfirm = async (file: File) => {
     setBannerError(null);
     setUploadingBanner(true);
     try {
       const data = await uploadSellerBanner(file);
       setBannerPath(data.banner_path ?? null);
       setSuccessMsg(data.message ?? 'Banner uploaded.');
+      setBannerDraft(null);
     } catch (err: unknown) {
       const apiErr = err as ApiErrorResponse;
-      setBannerError(apiErr?.message ?? 'Failed to upload banner.');
+      const message = apiErr?.message ?? 'Failed to upload banner.';
+      setBannerError(message);
+      throw new Error(message, { cause: err });
     } finally {
       setUploadingBanner(false);
     }
+  };
+
+  const handleUseApproximateLocation = () => {
+    setLocationNotice(null);
+    setPickupSuggestion(null);
+
+    if (!navigator.geolocation) {
+      setLocationNotice('This browser does not provide location assistance. Please enter the pickup address manually.');
+      return;
+    }
+    if (!window.isSecureContext) {
+      setLocationNotice('Location assistance requires a secure page connection (HTTPS). Please enter the pickup address manually on this page.');
+      return;
+    }
+
+    setLocatingPickup(true);
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      // Round coordinates before sending them to the address lookup service. They are not stored in app state.
+      const latitude = (Math.round(position.coords.latitude * 1000) / 1000).toFixed(3);
+      const longitude = (Math.round(position.coords.longitude * 1000) / 1000).toFixed(3);
+      try {
+        const query = new URLSearchParams({ lat: latitude, lon: longitude, lang: 'en', limit: '1' });
+        const response = await fetch(`https://photon.komoot.io/reverse?${query.toString()}`, {
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error('The address lookup service is unavailable. Please enter the pickup address manually.');
+
+        const result = await response.json() as PhotonResponse;
+        const properties = result.features?.[0]?.properties;
+        if (!properties) throw new Error('No nearby address suggestion was found. Please enter the pickup address manually.');
+
+        const country = firstText(properties.country)?.toLowerCase();
+        if (!country || !['philippines', 'pilipinas'].includes(country)) {
+          throw new Error('The location lookup did not return a Philippine address. Please enter the pickup address manually.');
+        }
+
+        const suggestion = pickupSuggestionFromPhoton(properties);
+        if (Object.keys(suggestion).length === 0) {
+          throw new Error('No address details were available for this location. Please enter the pickup address manually.');
+        }
+        setPickupSuggestion(suggestion);
+        setLocationNotice('An approximate address suggestion is ready. Review it before adding it to your editable pickup fields.');
+      } catch (error) {
+        setLocationNotice(error instanceof Error ? error.message : 'Location lookup failed. Please enter the pickup address manually.');
+      } finally {
+        setLocatingPickup(false);
+      }
+    }, (error) => {
+      setLocationNotice(geolocationErrorMessage(error));
+      setLocatingPickup(false);
+    }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 30000 });
+  };
+
+  const handleApplyPickupSuggestion = () => {
+    if (!pickupSuggestion) return;
+    setForm((previous) => ({ ...previous, ...pickupSuggestion }));
+    setPickupSuggestion(null);
+    setAppliedLocationSuggestion(true);
+    setLocationSuggestionConfirmed(false);
+    setLocationNotice('Suggestion added to the editable fields. Review each value and confirm below before saving.');
   };
 
   const handleRemoveLogo = async () => {
@@ -450,7 +591,7 @@ export const SellerSettingsPage: FC = () => {
             </label>
             <div className="space-y-3">
               {/* Banner Preview */}
-              <div className="w-full h-32 md:h-40 rounded-xl border-2 border-dashed border-[var(--border)] bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
+              <div className="w-full aspect-[3/1] rounded-xl border-2 border-dashed border-[var(--border)] bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
                 {bannerPath ? (
                   <img src={bannerPath} alt="Store banner" className="w-full h-full object-cover rounded-lg" />
                 ) : (
@@ -500,6 +641,46 @@ export const SellerSettingsPage: FC = () => {
           <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">Courier dispatch address for physical book orders · Optional for digital-only sellers</p>
         </div>
         <div className="p-5 md:p-6">
+          <div className="mb-5 rounded-lg border border-[var(--border)] bg-[var(--surface-hover)]/40 p-4">
+            <p className="text-xs leading-relaxed text-[var(--text-muted)]">
+              Manual address entry is always available. If you choose location assistance, Bookify will ask your browser for an approximate location, round it to about 100 m, and send that rounded point to Photon by Komoot using OpenStreetMap data to suggest address parts. Bookify does not save the coordinates. Review any suggestion before adding it to the editable fields; the address is saved only when you save your profile.
+            </p>
+            <button
+              type="button"
+              onClick={handleUseApproximateLocation}
+              disabled={locatingPickup}
+              className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-mono font-medium text-[var(--text)] hover:bg-[var(--surface-hover)] disabled:cursor-wait disabled:opacity-50"
+            >
+              {locatingPickup ? 'Finding approximate location…' : 'Use my approximate location'}
+            </button>
+            <p className="mt-2 text-[11px] text-[var(--text-muted)]">Location lookup uses one request per click and may be unavailable. Address fields below can always be entered or edited manually.</p>
+            {locationNotice && (
+              <p role="status" className="mt-3 text-xs text-[var(--text-muted)]">{locationNotice}</p>
+            )}
+            {pickupSuggestion && (
+              <div className="mt-3 rounded-lg border border-[var(--accent)]/30 bg-[var(--surface)] p-3">
+                <p className="text-xs font-semibold text-[var(--text)]">Approximate address suggestion — review before use</p>
+                <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+                  {pickupFields.map((field) => pickupSuggestion[field] && (
+                    <div key={field} className="min-w-0">
+                      <dt className="inline text-[var(--text-muted)]">{field.replace('pickup_', '').replaceAll('_', ' ')}: </dt>
+                      <dd className="inline break-words text-[var(--text)]">{pickupSuggestion[field]}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="mt-2 text-[10px] text-[var(--text-muted)]">
+                  This nearby match may be incomplete or inaccurate. © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">OpenStreetMap contributors</a>.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleApplyPickupSuggestion}
+                  className="mt-3 rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white hover:bg-[var(--accent-hover)]"
+                >
+                  Use this suggestion
+                </button>
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
             {/* Address Line */}
             <div className="md:col-span-2">
@@ -581,6 +762,17 @@ export const SellerSettingsPage: FC = () => {
               />
             </FieldGroup>
           </div>
+          {appliedLocationSuggestion && (
+            <label className="mt-5 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-[var(--text)]">
+              <input
+                type="checkbox"
+                checked={locationSuggestionConfirmed}
+                onChange={(event) => setLocationSuggestionConfirmed(event.target.checked)}
+                className="mt-0.5 accent-[var(--accent)]"
+              />
+              <span>I reviewed the suggested pickup fields above and confirm they are suitable. I understand they will be saved only when I save my profile.</span>
+            </label>
+          )}
         </div>
       </section>
 
@@ -600,6 +792,15 @@ export const SellerSettingsPage: FC = () => {
           {saving ? 'Saving…' : hasProfile ? 'Save Changes' : 'Create Store Profile'}
         </button>
       </div>
+      {bannerDraft && (
+        <BannerCropEditor
+          file={bannerDraft}
+          saving={uploadingBanner}
+          uploadError={bannerError}
+          onCancel={() => { setBannerDraft(null); setBannerError(null); }}
+          onConfirm={handleBannerConfirm}
+        />
+      )}
     </div>
   );
 };

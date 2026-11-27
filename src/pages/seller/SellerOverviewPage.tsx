@@ -15,8 +15,6 @@ export const SellerOverviewPage: FC = () => {
           <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         </svg>
       ),
-      note: 'Catalog creation arriving in Phase 4',
-      badge: 'Phase 4',
     },
     {
       label: 'Active Listings',
@@ -27,8 +25,6 @@ export const SellerOverviewPage: FC = () => {
           <polyline points="12 6 12 12 16 14" />
         </svg>
       ),
-      note: 'Multi-format stock engine in Phase 4',
-      badge: 'Phase 4',
     },
     {
       label: 'Pending Orders',
@@ -40,8 +36,6 @@ export const SellerOverviewPage: FC = () => {
           <path d="M16 10a4 4 0 0 1-8 0" />
         </svg>
       ),
-      note: 'Order fulfillment arriving in Phase 5',
-      badge: 'Phase 5',
     },
     {
       label: 'Completed Orders',
@@ -52,8 +46,6 @@ export const SellerOverviewPage: FC = () => {
           <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
         </svg>
       ),
-      note: 'Completed order tracking arriving in Phase 5',
-      badge: 'Phase 5',
     },
   ];
 
@@ -62,21 +54,18 @@ export const SellerOverviewPage: FC = () => {
       title: 'Add New Book Listing',
       desc: 'Publish physical books or digital e-books to the marketplace',
       path: '/seller/listings',
-      badge: 'Phase 4',
       icon: '+',
     },
     {
       title: 'Review Orders',
       desc: 'Confirm incoming purchases and track customer shipments',
       path: '/seller/orders',
-      badge: 'Phase 5',
       icon: '📦',
     },
     {
       title: 'Configure Store Profile',
       desc: 'Set up store name, pickup address, and payment preferences',
       path: '/seller/store-settings',
-      badge: 'Phase 3',
       icon: '⚙️',
     },
     {
@@ -85,57 +74,6 @@ export const SellerOverviewPage: FC = () => {
       path: '/books',
       badge: 'Active',
       icon: '🌐',
-    },
-  ];
-
-  const roadmapPhases = [
-    {
-      phase: 'Phase 1',
-      title: 'Database Schema Expansion',
-      status: 'Completed',
-      desc: 'Migration script for seller profiles, stock quantities, and order items.',
-      active: false,
-      done: true,
-    },
-    {
-      phase: 'Phase 2',
-      title: 'Seller Workspace Foundation',
-      status: 'Completed',
-      desc: 'Dedicated seller layout, sidebar navigation, top bar, and route structure.',
-      active: false,
-      done: true,
-    },
-    {
-      phase: 'Phase 3',
-      title: 'Store Profile & Identity Settings',
-      status: 'Completed',
-      desc: 'Store identity, pickup address management, and store image uploads.',
-      active: false,
-      done: true,
-    },
-    {
-      phase: 'Phase 4',
-      title: 'Listing Catalog & Inventory Engine',
-      status: 'Upcoming',
-      desc: 'Physical/e-book CRUD, stock counts, and admin moderation pipeline.',
-      active: false,
-      done: false,
-    },
-    {
-      phase: 'Phase 5',
-      title: 'Order Processing & Digital Delivery',
-      status: 'Upcoming',
-      desc: 'Split line-item confirmation, physical dispatch, and digital file access.',
-      active: false,
-      done: false,
-    },
-    {
-      phase: 'Phase 6',
-      title: 'Commission & Financial Accounting',
-      status: 'Upcoming',
-      desc: '15% commission tracking, seller net balances, and payout history.',
-      active: false,
-      done: false,
     },
   ];
 
@@ -163,21 +101,17 @@ export const SellerOverviewPage: FC = () => {
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-xs md:text-sm font-medium font-mono text-[var(--text)] transition-all shadow-sm"
             >
               <span>Store Settings</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--border)] text-[var(--text-muted)]">Phase 3</span>
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Metric Cards (Phase-safe Empty States) */}
+      {/* Metric Cards */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-mono uppercase tracking-wider text-[var(--text-muted)] font-medium">
             Performance Snapshot
           </h2>
-          <span className="text-xs font-mono text-[var(--text-muted)]">
-            Awaiting module integrations
-          </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
@@ -190,35 +124,26 @@ export const SellerOverviewPage: FC = () => {
                 <span className="text-xs font-mono uppercase tracking-wide text-[var(--text-muted)]">
                   {card.label}
                 </span>
-                <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-[var(--surface-hover)] text-[var(--text-muted)] border border-[var(--border)]">
-                  {card.badge}
-                </span>
               </div>
               <div className="mt-3 flex items-baseline gap-2">
                 <span className="text-3xl font-mono font-bold text-[var(--text)]">
                   {card.value}
                 </span>
               </div>
-              <p className="mt-2 text-xs text-[var(--text-muted)] leading-relaxed">
-                {card.note}
-              </p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Main Grid: Operational Panels & Roadmap */}
+      {/* Main Grid: Operational Panels */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column (2 cols): Recent Activity + Quick Actions */}
         <div className="lg:col-span-2 space-y-6">
           {/* Quick Actions Panel */}
           <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 md:p-6">
-            <h2 className="text-base font-semibold text-[var(--text)] mb-1">
+            <h2 className="text-base font-semibold text-[var(--text)] mb-4">
               Quick Actions
             </h2>
-            <p className="text-xs text-[var(--text-muted)] mb-4 font-mono">
-              Shortcuts to core seller workflows across development phases
-            </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {quickActions.map((action) => (
@@ -235,9 +160,7 @@ export const SellerOverviewPage: FC = () => {
                       <span className="text-xs font-semibold text-[var(--text)] truncate">
                         {action.title}
                       </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--border)]/60 text-[var(--text-muted)] shrink-0">
-                        {action.badge}
-                      </span>
+                      {action.badge && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--border)]/60 text-[var(--text-muted)] shrink-0">{action.badge}</span>}
                     </div>
                     <p className="mt-1 text-[11px] text-[var(--text-muted)] line-clamp-1">
                       {action.desc}
@@ -274,60 +197,12 @@ export const SellerOverviewPage: FC = () => {
               <h3 className="text-sm font-medium text-[var(--text)]">
                 No activity recorded yet
               </h3>
-              <p className="mt-1 text-xs text-[var(--text-muted)] max-w-sm">
-                Activity events will automatically appear here once you list books in Phase 4 and fulfill orders in Phase 5.
-              </p>
             </div>
           </section>
         </div>
 
-        {/* Right Column (1 col): Roadmap & Account Status */}
+        {/* Account Status */}
         <div className="space-y-6">
-          {/* Engineering Roadmap */}
-          <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 md:p-6">
-            <h2 className="text-base font-semibold text-[var(--text)] mb-1">
-              Seller Implementation Roadmap
-            </h2>
-            <p className="text-xs text-[var(--text-muted)] mb-4 font-mono">
-              6-Phase Engineering Lifecycle
-            </p>
-
-            <div className="space-y-3">
-              {roadmapPhases.map((phase) => (
-                <div
-                  key={phase.phase}
-                  className={`p-3 rounded-lg border text-xs transition-colors ${
-                    phase.active
-                      ? 'border-[var(--accent)] bg-[var(--accent)]/5'
-                      : phase.done
-                      ? 'border-emerald-500/30 bg-emerald-500/5'
-                      : 'border-[var(--border)] bg-[var(--surface-hover)]/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono font-bold text-[var(--text)]">
-                      {phase.phase}: {phase.title}
-                    </span>
-                    <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
-                        phase.done
-                          ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-semibold'
-                          : phase.active
-                          ? 'bg-[var(--accent)]/20 text-[var(--accent)] font-semibold'
-                          : 'bg-[var(--border)] text-[var(--text-muted)]'
-                      }`}
-                    >
-                      {phase.status}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                    {phase.desc}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-
           {/* Account Profile Card */}
           <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 md:p-6">
             <h2 className="text-base font-semibold text-[var(--text)] mb-3">

@@ -13,7 +13,6 @@ interface NavItem {
   label: string;
   path: string;
   icon: ReactNode;
-  badge?: string;
 }
 
 export const SellerSidebar: FC<SellerSidebarProps> = ({
@@ -43,7 +42,6 @@ export const SellerSidebar: FC<SellerSidebarProps> = ({
     {
       label: 'My Listings',
       path: '/seller/listings',
-      badge: 'Phase 4',
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -54,7 +52,6 @@ export const SellerSidebar: FC<SellerSidebarProps> = ({
     {
       label: 'Orders',
       path: '/seller/orders',
-      badge: 'Phase 5',
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
@@ -66,7 +63,6 @@ export const SellerSidebar: FC<SellerSidebarProps> = ({
     {
       label: 'Earnings',
       path: '/seller/earnings',
-      badge: 'Phase 6',
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <line x1="12" y1="1" x2="12" y2="23" />
@@ -77,7 +73,6 @@ export const SellerSidebar: FC<SellerSidebarProps> = ({
     {
       label: 'Store Settings',
       path: '/seller/store-settings',
-      badge: 'Phase 3',
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
@@ -304,22 +299,6 @@ export const SellerSidebar: FC<SellerSidebarProps> = ({
                   </span>
                   <span>{item.label}</span>
                 </div>
-                {item.badge && (
-                  <span
-                    style={{
-                      fontSize: '0.62rem',
-                      fontWeight: 600,
-                      padding: '1px 6px',
-                      borderRadius: '4px',
-                      background: 'var(--bg-secondary)',
-                      color: 'var(--text-muted)',
-                      border: '1px solid var(--border)',
-                      letterSpacing: '0.02em',
-                    }}
-                  >
-                    {item.badge}
-                  </span>
-                )}
               </Link>
             );
           })}
