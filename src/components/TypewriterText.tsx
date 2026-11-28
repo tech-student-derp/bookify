@@ -93,10 +93,12 @@ const TypewriterText: FC<TypewriterTextProps> = ({ initialLanguage, onLanguageCh
       }
     } else if (phase === 'done') {
       // Pick next language and restart
-      const next = getRandomLanguage(currentLang.code, languages);
-      setCurrentLang(next);
-      onLanguageChange?.(next);
-      setPhase('typing-headline');
+      scheduleNext(() => {
+        const next = getRandomLanguage(currentLang.code, languages);
+        setCurrentLang(next);
+        onLanguageChange?.(next);
+        setPhase('typing-headline');
+      }, 0);
     }
 
     return clearTimer;
@@ -118,7 +120,7 @@ const TypewriterText: FC<TypewriterTextProps> = ({ initialLanguage, onLanguageCh
           letterSpacing: '-0.03em',
           color: 'var(--text-heading)',
           marginBottom: '1.25rem',
-          fontFamily: "'Geist Mono', monospace",
+          fontFamily: "'Inter', Arial, sans-serif",
           minHeight: '3.5em',
         }}
       >
@@ -135,7 +137,7 @@ const TypewriterText: FC<TypewriterTextProps> = ({ initialLanguage, onLanguageCh
           color: 'var(--text-muted)',
           maxWidth: '52ch',
           marginBottom: 0,
-          fontFamily: "'Geist Mono', monospace",
+          fontFamily: "'Inter', Arial, sans-serif",
           minHeight: '5em',
         }}
       >

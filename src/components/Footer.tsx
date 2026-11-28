@@ -58,7 +58,7 @@ const Footer: FC = () => {
         background: 'linear-gradient(180deg, #0d1f1a 0%, #0a1628 100%)',
         borderTop: '1px solid #1a2f28',
         padding: '64px 24px 32px',
-        fontFamily: "'Geist Mono', monospace",
+        fontFamily: "'Inter', Arial, sans-serif",
         color: '#a0b4ac',
       }}
     >

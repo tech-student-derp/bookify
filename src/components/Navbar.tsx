@@ -88,7 +88,7 @@ const Navbar: FC<NavbarProps> = ({ resolvedScheme, onToggleTheme }) => {
     left: 0,
     right: 0,
     zIndex: 100,
-    fontFamily: "'Geist Mono', monospace",
+    fontFamily: "'Inter', Arial, sans-serif",
     transition: 'background 0.3s, box-shadow 0.3s, border-color 0.3s',
     background: isScrolled ? 'color-mix(in oklch, var(--bg) 92%, transparent)' : 'transparent',
     backdropFilter: isScrolled ? 'blur(12px)' : 'none',
@@ -188,7 +188,7 @@ const Navbar: FC<NavbarProps> = ({ resolvedScheme, onToggleTheme }) => {
               >{user.first_name}'s Account</Link>
               {user.role === 'customer' && <Link to="/cart" onClick={() => setIsMenuOpen(false)} className="mobile-cart-link">Shopping cart <span className="cart-nav-badge">{visibleCartCount}</span></Link>}
               <button onClick={handleLogout}
-                style={{ textDecoration: 'none', textAlign: 'center', fontSize: '0.95rem', fontWeight: 600, padding: '10px 12px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', color: 'white', marginTop: '4px', border: 'none', cursor: 'pointer', fontFamily: "'Geist Mono', monospace" }}
+                style={{ textDecoration: 'none', textAlign: 'center', fontSize: '0.95rem', fontWeight: 600, padding: '10px 12px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', color: 'white', marginTop: '4px', border: 'none', cursor: 'pointer', fontFamily: "'Inter', Arial, sans-serif" }}
               >Log Out</button>
             </>
           ) : (
