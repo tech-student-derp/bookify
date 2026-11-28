@@ -7,6 +7,8 @@ require_once __DIR__ . '/../utils/response.php';
 require_once __DIR__ . '/../config/session.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../middleware/auth.php';
+require_once __DIR__ . '/../utils/private_listing_files.php';
+require_once __DIR__ . '/../utils/listing_media.php';
 
 set_exception_handler(static function (Throwable $e): void {
     error_log('Catalog query error: ' . $e->getMessage());
@@ -23,13 +25,26 @@ $exists->execute(['book_listings']);
 if ((int) $exists->fetchColumn() !== 1) {
     errorResponse('Apply the Phase 2 database migration before enabling public book listings.', 503);
 }
+$phase7Columns = $db->query(
+    "SELECT COUNT(DISTINCT COLUMN_NAME) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_listings'
+       AND COLUMN_NAME IN ('publisher', 'language', 'ebook_file_format', 'ebook_authorized_at', 'submitted_at', 'archived_at')"
+);
+$phase7Media = $db->query(
+    "SELECT COUNT(*) FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_listing_media'"
+);
+if ((int) $phase7Columns->fetchColumn() !== 6 || (int) $phase7Media->fetchColumn() !== 1) {
+    errorResponse('The catalog is temporarily unavailable while its database schema is updated.', 503, ['code' => 'migration_required']);
+}
 
-$visibility = "b.listing_status = 'approved' AND b.publication_status = 'published' AND b.availability = 'available'
+$visibility = "b.listing_status = 'approved' AND b.publication_status = 'published' AND b.availability = 'available' AND b.archived_at IS NULL
 AND ((b.`source` = 'bookify' AND EXISTS (
     SELECT 1 FROM users creator WHERE creator.id = b.created_by AND creator.role IN ('staff', 'admin')
 )) OR (b.`source` = 'seller' AND EXISTS (
     SELECT 1 FROM users seller JOIN seller_applications application ON application.user_id = seller.id
-    WHERE seller.id = b.seller_id AND seller.role = 'seller' AND seller.account_status = 'active' AND application.status = 'approved'
+    WHERE seller.id = b.seller_id AND seller.role = 'seller' AND seller.account_status = 'active'
+      AND seller.is_verified = 1 AND application.status = 'approved'
 )))";
 
 $idRaw = $_GET['id'] ?? null;
@@ -37,7 +52,7 @@ if ($idRaw !== null) {
     $id = filter_var($idRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($id === false) errorResponse('Invalid book id.', 422);
     $stmt = $db->prepare(
-        "SELECT b.id, b.title, b.author, b.price, b.`condition`, b.`format`, b.category, b.cover_image_path AS cover_url,
+        "SELECT b.id, b.title, b.author, b.publisher, b.language, b.price, b.`condition`, b.`format`, b.category, b.cover_image_path AS cover_url,
                 b.description, CASE WHEN b.`source` = 'bookify' THEN 'Bookify' ELSE NULL END AS seller_name,
                 b.`source`, 'Available' AS availability
          FROM book_listings b WHERE {$visibility} AND b.id = ? LIMIT 1"
@@ -47,6 +62,18 @@ if ($idRaw !== null) {
     if (!$book) errorResponse('Book not found.', 404);
     $book['id'] = (int) $book['id'];
     $book['price'] = (float) $book['price'];
+    $book['cover_url'] = listingImageUrl((int) $book['id'], $book['cover_url']);
+    $mediaTable = $db->query(
+        "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_listing_media'"
+    );
+    $book['images'] = [];
+    if ((int) $mediaTable->fetchColumn() === 1) {
+        $images = $db->prepare('SELECT id, media_type, file_path, sort_order FROM book_listing_media WHERE listing_id = ? ORDER BY media_type, sort_order, id');
+        $images->execute([(int) $book['id']]);
+        $book['images'] = $images->fetchAll();
+        foreach ($book['images'] as &$image) $image['file_path'] = listingImageUrl((int) $book['id'], $image['file_path'], (int) $image['id']);
+        unset($image);
+    }
     successResponse(['book' => $book]);
 }
 
@@ -91,7 +118,7 @@ $countStmt = $db->prepare('SELECT COUNT(*) FROM book_listings b WHERE ' . $where
 $countStmt->execute($params);
 $total = (int) $countStmt->fetchColumn();
 $stmt = $db->prepare(
-    "SELECT b.id, b.title, b.author, b.price, b.`condition`, b.`format`, b.category,
+    "SELECT b.id, b.title, b.author, b.publisher, b.language, b.price, b.`condition`, b.`format`, b.category,
             b.cover_image_path AS cover_url, b.description,
             CASE WHEN b.`source` = 'bookify' THEN 'Bookify' ELSE NULL END AS seller_name,
             b.`source`, 'Available' AS availability
@@ -104,7 +131,11 @@ $stmt->bindValue(count($params) + 1, (int) $perPage, PDO::PARAM_INT);
 $stmt->bindValue(count($params) + 2, $offset, PDO::PARAM_INT);
 $stmt->execute();
 $books = $stmt->fetchAll();
-foreach ($books as &$book) { $book['id'] = (int) $book['id']; $book['price'] = (float) $book['price']; }
+foreach ($books as &$book) {
+    $book['id'] = (int) $book['id'];
+    $book['price'] = (float) $book['price'];
+    $book['cover_url'] = listingImageUrl((int) $book['id'], $book['cover_url']);
+}
 unset($book);
 
 $categoryStmt = $db->prepare("SELECT DISTINCT b.category FROM book_listings b WHERE {$visibility} ORDER BY b.category");

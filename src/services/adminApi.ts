@@ -47,13 +47,17 @@ export interface SellerApplicationRecord {
   contact_number: string | null; has_id_document: boolean | number; is_verified: boolean; account_status: 'active' | 'suspended'; role: string;
 }
 export interface ManagedListing {
-  id: number; title: string; author: string; description: string | null; cover_image_path: string | null; category: string;
+  id: number; title: string; author: string; publisher?: string | null; description: string | null; cover_image_path: string | null; category: string; language?: string | null; isbn?: string | null;
   price: string; condition: 'New' | 'Like New' | 'Very Good' | 'Good' | 'Acceptable' | 'Pre-owned'; format: 'Physical' | 'E-book'; source: 'seller' | 'bookify';
-  seller_id: number | null; created_by: number; listing_status: 'pending' | 'approved' | 'rejected' | 'suspended';
+  seller_id: number | null; created_by: number; listing_status: 'pending' | 'draft' | 'pending_review' | 'approved' | 'rejected' | 'needs_revision' | 'suspended';
   publication_status: 'draft' | 'published' | 'unpublished'; availability: 'available' | 'unavailable';
-  moderation_reason: string | null; reviewed_at: string | null; created_at: string;
+  moderation_reason: string | null; reviewed_at: string | null; created_at: string; submitted_at?: string | null; stock_quantity?: number;
+  has_ebook_file?: boolean | number; ebook_file_format?: 'PDF' | 'EPUB' | null; ebook_rights_confirmed?: boolean | number;
   seller_first_name: string | null; seller_last_name: string | null; creator_first_name: string; creator_last_name: string;
 }
+export interface ListingReviewMedia { id: number; media_type: 'back_cover' | 'additional' | 'interior_preview'; file_path: string; sort_order: number; }
+export interface ListingReviewHistory { actor_id: number | null; actor_name: string; action: string; comments: string | null; created_at: string; }
+export interface ListingDetails extends ManagedListing { seller_email: string | null; media: ListingReviewMedia[]; }
 export interface PageResult { total: number; page: number; per_page: number; }
 
 export function listUsers(params: Record<string, string>) { return adminRequest<{ users: ManagedUser[] } & PageResult>('users', { params }); }
@@ -64,5 +68,6 @@ export function updateStaff(body: { staff_id: number; first_name: string; last_n
 export function listSellerApplications(params: Record<string, string>) { return adminRequest<{ applications: SellerApplicationRecord[] } & PageResult>('seller-applications', { params }); }
 export function reviewSellerApplication(body: { application_id: number; decision: 'approved' | 'rejected'; reason: string }) { return adminRequest<{ message: string }>('review-seller', { method: 'POST', body }); }
 export function listListings(params: Record<string, string>) { return adminRequest<{ listings: ManagedListing[] } & PageResult>('listings', { params }); }
+export function getListingDetails(id: number) { return adminRequest<{ listing: ListingDetails; history: ListingReviewHistory[] }>('listing-details', { params: { listing_id: String(id) } }); }
 export function createBookifyListing(body: Record<string, unknown>) { return adminRequest<{ message: string; listing_id: number }>('listing-create', { method: 'POST', body }); }
-export function reviewListing(body: { listing_id: number; decision: 'approve' | 'reject' | 'suspend' | 'restore' | 'publish' | 'unpublish'; reason: string }) { return adminRequest<{ message: string }>('review-listing', { method: 'POST', body }); }
+export function reviewListing(body: { listing_id: number; decision: 'approve' | 'reject' | 'request_revision' | 'suspend' | 'restore' | 'publish' | 'unpublish'; reason: string }) { return adminRequest<{ message: string }>('review-listing', { method: 'POST', body }); }

@@ -14,6 +14,7 @@ type Book = {
   seller_name: string | null;
   source: 'seller' | 'bookify';
   availability: string;
+  images?: { id: number; media_type: 'back_cover' | 'additional' | 'interior_preview'; file_path: string; sort_order: number }[];
 };
 
 type Filters = { category: string; condition: string; format: string; minPrice: string; maxPrice: string };
@@ -120,6 +121,7 @@ const MarketplacePage: FC = () => {
                   <p className="detail-price">{money.format(selected.price)}</p>
                   <div className="book-tags"><span>{selected.condition}</span><span>{selected.format}</span><span>{selected.availability}</span></div>
                   {selected.description && <p className="detail-description">{selected.description}</p>}
+                  {selected.images && selected.images.length > 0 && <div className="mt-5 flex gap-3 overflow-x-auto" aria-label="Additional book photos and previews">{selected.images.map((image) => <img key={image.id} src={image.file_path} alt={`${image.media_type.replaceAll('_', ' ')} for ${selected.title}`} className="h-24 w-20 shrink-0 rounded-lg border border-[var(--border)] object-cover" />)}</div>}
                   <p className="seller-credit">{selected.source === 'bookify' ? 'Sold by Bookify' : `Sold by ${selected.seller_name || 'Bookify seller'}`}</p>
                   <button className="market-button" disabled title="Cart and checkout are not available yet">Add to cart · unavailable</button>
                 </div>

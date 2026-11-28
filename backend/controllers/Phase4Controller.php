@@ -40,6 +40,15 @@ function p4Tables(PDO $db, array $tables): bool {
     return true;
 }
 
+function p4ColumnExists(PDO $db, string $table, string $column): bool {
+    $stmt = $db->prepare(
+        'SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+    );
+    $stmt->execute([$table, $column]);
+    return (int) $stmt->fetchColumn() === 1;
+}
+
 function requireP4Tables(PDO $db, array $tables, string $message): void {
     if (!p4Tables($db, $tables)) errorResponse($message, 503);
 }
@@ -158,7 +167,7 @@ function handleActivity(PDO $db): never {
     if (p4Tables($db, ['book_listings'])) $feeds[] = $db->query("SELECT CONCAT('listing:',id) AS event_key, 'Book listing submitted' AS title, CONCAT(title, ' · ', listing_status) AS description, created_at AS occurred_at, '/admin/listings' AS route FROM book_listings ORDER BY created_at DESC LIMIT 10")->fetchAll();
     if (p4Tables($db, ['orders'])) $feeds[] = $db->query("SELECT CONCAT('order:',id) AS event_key, 'Order placed' AS title, CONCAT('Order #',id, ' · ',status) AS description, created_at AS occurred_at, '/admin/orders' AS route FROM orders ORDER BY created_at DESC LIMIT 10")->fetchAll();
     if (p4Tables($db, ['refund_requests'])) $feeds[] = $db->query("SELECT CONCAT('refund:',id) AS event_key, 'Refund request submitted' AS title, CONCAT('Order #',order_id, ' · ',status) AS description, requested_at AS occurred_at, '/admin/refunds' AS route FROM refund_requests ORDER BY requested_at DESC LIMIT 10")->fetchAll();
-    $audit = $db->query("SELECT CONCAT('audit:',a.id) AS event_key, CASE a.action WHEN 'user.suspend' THEN 'Account suspended' WHEN 'user.reactivate' THEN 'Account reactivated' WHEN 'seller_application.approved' THEN 'Seller approved' WHEN 'seller_application.rejected' THEN 'Seller application rejected' WHEN 'listing.approve' THEN 'Listing approved' WHEN 'listing.reject' THEN 'Listing rejected' WHEN 'listing.suspend' THEN 'Listing suspended' WHEN 'listing.create' THEN 'Bookify listing created' WHEN 'order.status_change' THEN 'Order status changed' WHEN 'delivery.update' THEN 'Delivery updated' WHEN 'refund.approved' THEN 'Refund decision approved' WHEN 'refund.rejected' THEN 'Refund decision rejected' ELSE 'Back-office action recorded' END AS title, CONCAT('Record #',COALESCE(a.target_id,0),' · ',COALESCE(u.first_name,'Former user'),' ',COALESCE(u.last_name,'')) AS description, a.created_at AS occurred_at, CASE a.target_type WHEN 'seller_application' THEN '/admin/sellers' WHEN 'book_listing' THEN '/admin/listings' WHEN 'order' THEN '/admin/orders' WHEN 'delivery' THEN '/admin/deliveries' WHEN 'refund_request' THEN '/admin/refunds' ELSE '/admin' END AS route FROM admin_audit_logs a LEFT JOIN users u ON u.id = a.actor_id ORDER BY a.created_at DESC LIMIT 20")->fetchAll();
+    $audit = $db->query("SELECT CONCAT('audit:',a.id) AS event_key, CASE a.action WHEN 'user.suspend' THEN 'Account suspended' WHEN 'user.reactivate' THEN 'Account reactivated' WHEN 'seller_application.approved' THEN 'Seller approved' WHEN 'seller_application.rejected' THEN 'Seller application rejected' WHEN 'listing.approve' THEN 'Listing approved' WHEN 'listing.reject' THEN 'Listing rejected' WHEN 'listing.request_revision' THEN 'Listing revision requested' WHEN 'listing.suspend' THEN 'Listing suspended' WHEN 'listing.restore' THEN 'Listing restored' WHEN 'listing.publish' THEN 'Listing published' WHEN 'listing.unpublish' THEN 'Listing unpublished' WHEN 'listing.archive' THEN 'Listing archived' WHEN 'listing.unarchive_submit_review' THEN 'Listing restored for review' WHEN 'listing.submit' THEN 'Listing submitted for review' WHEN 'listing.save_draft' THEN 'Listing draft saved' WHEN 'listing.inventory_update' THEN 'Listing inventory updated' WHEN 'listing.create' THEN 'Bookify listing created' WHEN 'order.status_change' THEN 'Order status changed' WHEN 'delivery.update' THEN 'Delivery updated' WHEN 'refund.approved' THEN 'Refund decision approved' WHEN 'refund.rejected' THEN 'Refund decision rejected' ELSE 'Back-office action recorded' END AS title, CONCAT('Record #',COALESCE(a.target_id,0),' · ',COALESCE(u.first_name,'Former user'),' ',COALESCE(u.last_name,'')) AS description, a.created_at AS occurred_at, CASE a.target_type WHEN 'seller_application' THEN '/admin/sellers' WHEN 'book_listing' THEN '/admin/listings' WHEN 'order' THEN '/admin/orders' WHEN 'delivery' THEN '/admin/deliveries' WHEN 'refund_request' THEN '/admin/refunds' ELSE '/admin' END AS route FROM admin_audit_logs a LEFT JOIN users u ON u.id = a.actor_id ORDER BY a.created_at DESC LIMIT 20")->fetchAll();
     $feeds[] = $audit;
     $events = []; foreach ($feeds as $feed) foreach ($feed as $event) $events[$event['event_key']] = $event;
     usort($events, static fn(array $a, array $b): int => strcmp((string) $b['occurred_at'], (string) $a['occurred_at']));
@@ -183,9 +192,14 @@ function buildNotifications(PDO $db): array {
     $actor = p4Actor(); $preferences = $db->prepare('SELECT notification_type, enabled FROM backoffice_notification_preferences WHERE user_id = ?'); $preferences->execute([$actor]);
     $enabled = []; foreach ($preferences->fetchAll() as $pref) $enabled[$pref['notification_type']] = (bool) $pref['enabled'];
     $rows = [];
+    $listingOccurredAt = p4ColumnExists($db, 'book_listings', 'submitted_at') ? 'COALESCE(b.submitted_at, b.created_at)' : 'b.created_at';
+    $listingNotificationKey = p4ColumnExists($db, 'book_listings', 'submitted_at')
+        ? "CONCAT('listing_review:',b.id,':',DATE_FORMAT(COALESCE(b.submitted_at,b.created_at),'%Y%m%d%H%i%s'))"
+        : "CONCAT('listing_review:',b.id)";
+    $listingArchiveClause = p4ColumnExists($db, 'book_listings', 'archived_at') ? ' AND b.archived_at IS NULL' : '';
     $queries = [
         "SELECT 'seller_application' AS type, CONCAT('seller_application:',a.id) AS notification_key, 'Seller application to review' AS title, CONCAT('Application #',a.id,' is awaiting review.') AS message, a.applied_at AS occurred_at, 'sellers' AS section FROM seller_applications a WHERE a.status='pending'",
-        "SELECT 'listing_review' AS type, CONCAT('listing_review:',b.id) AS notification_key, 'Book listing to review' AS title, CONCAT(b.title,' is awaiting moderation.') AS message, b.created_at AS occurred_at, 'listings' AS section FROM book_listings b WHERE b.listing_status='pending'",
+        "SELECT 'listing_review' AS type, " . $listingNotificationKey . " AS notification_key, 'Book listing to review' AS title, CONCAT(b.title,' is awaiting moderation.') AS message, " . $listingOccurredAt . " AS occurred_at, 'listings' AS section FROM book_listings b WHERE b.listing_status IN ('pending_review','pending')" . $listingArchiveClause,
         "SELECT 'order_pending' AS type, CONCAT('order:',o.id) AS notification_key, 'Order awaiting confirmation' AS title, CONCAT('Order #',o.id,' needs an operational update.') AS message, o.created_at AS occurred_at, 'orders' AS section FROM orders o WHERE o.status IN ('pending','awaiting_seller_confirmation')",
         "SELECT 'cancellation_request' AS type, CONCAT('cancellation:',o.id) AS notification_key, 'Cancellation request to review' AS title, CONCAT('Order #',o.id,' has a cancellation request.') AS message, o.cancellation_requested_at AS occurred_at, 'orders' AS section FROM orders o WHERE o.cancellation_status='pending'",
         "SELECT 'delivery_unassigned' AS type, CONCAT('delivery:',d.id) AS notification_key, 'Delivery needs assignment' AS title, CONCAT('Order #',d.order_id,' has no assigned staff member.') AS message, d.created_at AS occurred_at, 'deliveries' AS section FROM deliveries d WHERE d.status='pending' AND d.assigned_staff_id IS NULL",
@@ -209,7 +223,9 @@ function handleNotifications(PDO $db): never {
 function markNotificationRead(PDO $db): never {
     requireMethod('POST'); requireNotificationSchema($db); $body = p4Body();
     $key = $body['notification_key'] ?? null;
-    if (!is_string($key) || strlen($key) > 191 || !preg_match('/^(seller_application|listing_review|order|cancellation|delivery|refund):[1-9][0-9]*$/', $key)) errorResponse('Invalid notification key.', 422);
+    $validKey = is_string($key) && strlen($key) <= 191
+        && preg_match('/^(?:(?:seller_application|order|cancellation|delivery|refund):[1-9][0-9]*|listing_review:[1-9][0-9]*(?::[0-9]{14})?)$/D', $key) === 1;
+    if (!$validKey) errorResponse('Invalid notification key.', 422);
     $stmt = $db->prepare('INSERT INTO backoffice_notification_reads (user_id, notification_key) VALUES (?, ?) ON DUPLICATE KEY UPDATE read_at = VALUES(read_at)');
     $stmt->execute([p4Actor(), $key]);
     successResponse(['message' => 'Notification marked as read.']);

@@ -13,3 +13,9 @@ AddType text/plain .php .phtml .php3 .php4 .php5 .php7 .phps .phar
 <FilesMatch "(?i)\.(jpe?g|png|webp|gif|svg|pdf|ico)$">
   Require all granted
 </FilesMatch>
+
+# Listing images are served through ListingMediaController.php so listing visibility
+# and ownership checks apply to legacy files as well as newly uploaded private files.
+<If "%{REQUEST_URI} =~ m#(?i)(?:^|/)books(?:/|$)#">
+  Require all denied
+</If>
