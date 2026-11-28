@@ -1,20 +1,29 @@
 import { type FC, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { MarketplaceBookCover, MarketplaceProductDetail } from '../components/MarketplaceProductDetail';
+import { useAuth } from '../contexts/AuthContext';
+import { addCartItem } from '../services/cartApi';
 
 type Book = {
   id: number;
   title: string;
   author: string;
+  publisher?: string | null;
   price: number;
   condition: 'New' | 'Like New' | 'Very Good' | 'Good' | 'Acceptable' | 'Pre-owned';
   format: 'Physical' | 'E-book';
   category: string;
+  language?: string | null;
+  isbn?: string | null;
   cover_url: string | null;
   description: string | null;
   seller_name: string | null;
+  seller_id?: number | null;
+  can_add_to_cart?: boolean;
   source: 'seller' | 'bookify';
   availability: string;
   images?: { id: number; media_type: 'back_cover' | 'additional' | 'interior_preview'; file_path: string; sort_order: number }[];
+  ebook_file_format?: string | null;
 };
 
 type Filters = { category: string; condition: string; format: string; minPrice: string; maxPrice: string };
@@ -25,6 +34,7 @@ const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP
 
 const MarketplacePage: FC = () => {
   const { bookId } = useParams();
+  const { authenticated, user } = useAuth();
   const [books, setBooks] = useState<Book[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selected, setSelected] = useState<Book | null>(null);
@@ -36,6 +46,8 @@ const MarketplacePage: FC = () => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sort, setSort] = useState('newest');
   const [page, setPage] = useState(1);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [cartMessage, setCartMessage] = useState('');
 
   const params = useMemo(() => {
     const query = new URLSearchParams({ page: String(page), per_page: '12', sort });
@@ -105,6 +117,20 @@ const MarketplacePage: FC = () => {
     setPage(1);
   };
 
+  const addSelectedBookToCart = async () => {
+    if (!selected || selected.format !== 'Physical' || !selected.can_add_to_cart || user?.role !== 'customer') return;
+    setAddingToCart(true);
+    setCartMessage('');
+    try {
+      await addCartItem(selected.id);
+      setCartMessage('Added to your cart. Adding items does not reserve stock.');
+    } catch (err) {
+      setCartMessage(err instanceof Error ? err.message : 'This book could not be added to your cart.');
+    } finally {
+      setAddingToCart(false);
+    }
+  };
+
   return (
     <main className="marketplace">
       <div className="marketplace-inner">
@@ -112,20 +138,7 @@ const MarketplacePage: FC = () => {
           <section className="book-detail">
             <Link to="/books" className="market-back">← Back to all books</Link>
             {loading ? <div className="market-message" role="status">Loading book details…</div> : error ? <div className="market-message market-error" role="alert">{error}</div> : selected ? (
-              <div className="detail-card">
-                <Cover book={selected} large />
-                <div className="detail-copy">
-                  <span className="market-eyebrow">{selected.category}</span>
-                  <h1>{selected.title}</h1>
-                  <p className="book-author">by {selected.author}</p>
-                  <p className="detail-price">{money.format(selected.price)}</p>
-                  <div className="book-tags"><span>{selected.condition}</span><span>{selected.format}</span><span>{selected.availability}</span></div>
-                  {selected.description && <p className="detail-description">{selected.description}</p>}
-                  {selected.images && selected.images.length > 0 && <div className="mt-5 flex gap-3 overflow-x-auto" aria-label="Additional book photos and previews">{selected.images.map((image) => <img key={image.id} src={image.file_path} alt={`${image.media_type.replaceAll('_', ' ')} for ${selected.title}`} className="h-24 w-20 shrink-0 rounded-lg border border-[var(--border)] object-cover" />)}</div>}
-                  <p className="seller-credit">{selected.source === 'bookify' ? 'Sold by Bookify' : `Sold by ${selected.seller_name || 'Bookify seller'}`}</p>
-                  <button className="market-button" disabled title="Cart and checkout are not available yet">Add to cart · unavailable</button>
-                </div>
-              </div>
+              <MarketplaceProductDetail book={selected} authenticated={authenticated} userRole={user?.role} addingToCart={addingToCart} cartMessage={cartMessage} onAddToCart={addSelectedBookToCart} />
             ) : <EmptyState filtered={false} />}
           </section>
         ) : (
@@ -150,7 +163,7 @@ const MarketplacePage: FC = () => {
                 </div>
               </div>
               {loading ? <div className="market-message" role="status">Loading books…</div> : error ? <div className="market-message market-error" role="alert"><span className="empty-icon">!</span><h3>Catalog unavailable</h3><p>{error}</p></div> : books.length === 0 ? <EmptyState filtered={Boolean(search || Object.values(filters).some(Boolean))} onClear={clearFilters} /> : <>
-                <div className="book-grid">{books.map((book) => <Link to={`/books/${book.id}`} className="book-card" key={book.id}><Cover book={book} /><div className="book-info"><div className="book-tags"><span>{book.condition}</span><span>{book.format}</span></div><h3>{book.title}</h3><p className="book-author">{book.author}</p><div className="book-meta"><span>{book.category}</span><strong>{money.format(book.price)}</strong></div><small>{book.source === 'bookify' ? 'Bookify Store' : `Seller · ${book.seller_name || 'Bookify'}`}</small></div></Link>)}</div>
+                <div className="book-grid">{books.map((book) => <Link to={`/books/${book.id}`} className="book-card" key={book.id}><MarketplaceBookCover book={book} /><div className="book-info"><div className="book-tags"><span>{book.condition}</span><span>{book.format}</span></div><h3>{book.title}</h3><p className="book-author">{book.author}</p><div className="book-meta"><span>{book.category}</span><strong>{money.format(book.price)}</strong></div><small>{book.source === 'bookify' ? 'Bookify Store' : `Seller · ${book.seller_name || 'Seller store'}`}</small></div></Link>)}</div>
                 <div className="pagination"><button disabled={page <= 1} onClick={() => { beginRequest(); setPage((value) => value - 1); }}>Previous</button><span>Page {page}</span><button disabled={books.length < 12} onClick={() => { beginRequest(); setPage((value) => value + 1); }}>Next</button></div>
               </>}
             </section>
@@ -174,11 +187,6 @@ const MarketplacePage: FC = () => {
 };
 
 const FilterIcon: FC = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4"/><circle cx="8" cy="7" r="2" fill="var(--surface)"/><circle cx="15" cy="12" r="2" fill="var(--surface)"/></svg>;
-
-const Cover: FC<{ book: Book; large?: boolean }> = ({ book, large }) => {
-  const [failed, setFailed] = useState(false);
-  return <div className={`cover${large ? ' cover-large' : ''}`}>{book.cover_url && !failed ? <img src={book.cover_url} alt={`Cover of ${book.title}`} onError={() => setFailed(true)} /> : <div className="cover-empty" aria-label="No cover image available"><span>BOOKIFY</span><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 11h22a5 5 0 0 1 5 5v21H15a5 5 0 0 1-5-5V11Z"/><path d="M15 37V16a5 5 0 0 1 5-5"/></svg><small>Cover image<br />not available</small></div>}</div>;
-};
 
 const EmptyState: FC<{ filtered: boolean; onClear?: () => void }> = ({ filtered, onClear }) => (
   <div className="market-message empty-state"><div className="shelf-art" aria-hidden="true"><span /><span /><span /><i /></div><h3>{filtered ? 'No results found.' : 'Nothing here, sorry.'}</h3>{filtered && onClear && <button className="market-button" onClick={onClear}>Clear search and filters</button>}</div>

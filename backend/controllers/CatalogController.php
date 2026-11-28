@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../middleware/auth.php';
 require_once __DIR__ . '/../utils/private_listing_files.php';
 require_once __DIR__ . '/../utils/listing_media.php';
+require_once __DIR__ . '/../utils/listing_visibility.php';
 
 set_exception_handler(static function (Throwable $e): void {
     error_log('Catalog query error: ' . $e->getMessage());
@@ -28,40 +29,45 @@ if ((int) $exists->fetchColumn() !== 1) {
 $phase7Columns = $db->query(
     "SELECT COUNT(DISTINCT COLUMN_NAME) FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_listings'
-       AND COLUMN_NAME IN ('publisher', 'language', 'ebook_file_format', 'ebook_authorized_at', 'submitted_at', 'archived_at')"
+       AND COLUMN_NAME IN ('publisher', 'language', 'ebook_file_format', 'ebook_authorized_at', 'submitted_at', 'archived_at', 'isbn', 'stock_quantity')"
 );
 $phase7Media = $db->query(
     "SELECT COUNT(*) FROM information_schema.TABLES
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_listing_media'"
 );
-if ((int) $phase7Columns->fetchColumn() !== 6 || (int) $phase7Media->fetchColumn() !== 1) {
+if ((int) $phase7Columns->fetchColumn() !== 8 || (int) $phase7Media->fetchColumn() !== 1) {
+    errorResponse('The catalog is temporarily unavailable while its database schema is updated.', 503, ['code' => 'migration_required']);
+}
+$sellerProfiles = $db->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seller_profiles'");
+if ((int) $sellerProfiles->fetchColumn() !== 1) {
     errorResponse('The catalog is temporarily unavailable while its database schema is updated.', 503, ['code' => 'migration_required']);
 }
 
-$visibility = "b.listing_status = 'approved' AND b.publication_status = 'published' AND b.availability = 'available' AND b.archived_at IS NULL
-AND ((b.`source` = 'bookify' AND EXISTS (
-    SELECT 1 FROM users creator WHERE creator.id = b.created_by AND creator.role IN ('staff', 'admin')
-)) OR (b.`source` = 'seller' AND EXISTS (
-    SELECT 1 FROM users seller JOIN seller_applications application ON application.user_id = seller.id
-    WHERE seller.id = b.seller_id AND seller.role = 'seller' AND seller.account_status = 'active'
-      AND seller.is_verified = 1 AND application.status = 'approved'
-)))";
+$visibility = publicListingVisibilitySql('b');
 
 $idRaw = $_GET['id'] ?? null;
 if ($idRaw !== null) {
     $id = filter_var($idRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($id === false) errorResponse('Invalid book id.', 422);
     $stmt = $db->prepare(
-        "SELECT b.id, b.title, b.author, b.publisher, b.language, b.price, b.`condition`, b.`format`, b.category, b.cover_image_path AS cover_url,
-                b.description, CASE WHEN b.`source` = 'bookify' THEN 'Bookify' ELSE NULL END AS seller_name,
+        "SELECT b.id, b.title, b.author, b.publisher, b.language, b.isbn, b.ebook_file_format, b.price, b.`condition`, b.`format`, b.category,
+                b.cover_image_path AS cover_url, b.description,
+                CASE WHEN b.`source` = 'bookify' THEN 'Bookify' ELSE COALESCE(NULLIF(sp.store_name, ''), NULLIF(CONCAT_WS(' ', seller.first_name, seller.last_name), '')) END AS seller_name,
+                CASE WHEN b.`source` = 'seller' THEN b.seller_id ELSE NULL END AS seller_id,
+                (b.`format` = 'Physical' AND b.stock_quantity > 0) AS can_add_to_cart,
                 b.`source`, 'Available' AS availability
-         FROM book_listings b WHERE {$visibility} AND b.id = ? LIMIT 1"
+         FROM book_listings b
+         LEFT JOIN seller_profiles sp ON sp.user_id = b.seller_id
+         LEFT JOIN users seller ON seller.id = b.seller_id
+         WHERE {$visibility} AND b.id = ? LIMIT 1"
     );
     $stmt->execute([(int) $id]);
     $book = $stmt->fetch();
     if (!$book) errorResponse('Book not found.', 404);
     $book['id'] = (int) $book['id'];
     $book['price'] = (float) $book['price'];
+    $book['seller_id'] = $book['seller_id'] === null ? null : (int) $book['seller_id'];
+    $book['can_add_to_cart'] = (bool) $book['can_add_to_cart'];
     $book['cover_url'] = listingImageUrl((int) $book['id'], $book['cover_url']);
     $mediaTable = $db->query(
         "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'book_listing_media'"
@@ -120,9 +126,14 @@ $total = (int) $countStmt->fetchColumn();
 $stmt = $db->prepare(
     "SELECT b.id, b.title, b.author, b.publisher, b.language, b.price, b.`condition`, b.`format`, b.category,
             b.cover_image_path AS cover_url, b.description,
-            CASE WHEN b.`source` = 'bookify' THEN 'Bookify' ELSE NULL END AS seller_name,
+            CASE WHEN b.`source` = 'bookify' THEN 'Bookify' ELSE COALESCE(NULLIF(sp.store_name, ''), NULLIF(CONCAT_WS(' ', seller.first_name, seller.last_name), '')) END AS seller_name,
+            CASE WHEN b.`source` = 'seller' THEN b.seller_id ELSE NULL END AS seller_id,
+            (b.`format` = 'Physical' AND b.stock_quantity > 0) AS can_add_to_cart,
             b.`source`, 'Available' AS availability
-     FROM book_listings b WHERE {$whereSql} ORDER BY {$orderBy} LIMIT ? OFFSET ?"
+     FROM book_listings b
+     LEFT JOIN seller_profiles sp ON sp.user_id = b.seller_id
+     LEFT JOIN users seller ON seller.id = b.seller_id
+     WHERE {$whereSql} ORDER BY {$orderBy} LIMIT ? OFFSET ?"
 );
 foreach ($params as $index => $value) {
     $stmt->bindValue($index + 1, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
@@ -134,6 +145,8 @@ $books = $stmt->fetchAll();
 foreach ($books as &$book) {
     $book['id'] = (int) $book['id'];
     $book['price'] = (float) $book['price'];
+    $book['seller_id'] = $book['seller_id'] === null ? null : (int) $book['seller_id'];
+    $book['can_add_to_cart'] = (bool) $book['can_add_to_cart'];
     $book['cover_url'] = listingImageUrl((int) $book['id'], $book['cover_url']);
 }
 unset($book);

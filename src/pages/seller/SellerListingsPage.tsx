@@ -13,9 +13,12 @@ import {
   type ListingInput,
   type SellerListing,
 } from '../../services/sellerListingApi';
+import { BOOK_CATEGORIES, BOOK_LANGUAGES, OTHER_TAXONOMY_VALUE, isCustomTaxonomyValue, taxonomySelectValue } from '../../data/listingTaxonomy';
+import { MarketplaceProductDetail } from '../../components/MarketplaceProductDetail';
+import { buildSellerListingPreview } from '../../utils/sellerListingPreview';
 
 const EMPTY_FORM: ListingInput = {
-  title: '', author: '', publisher: '', description: '', category: '', language: '', isbn: '', price: '',
+  title: '', author: '', publisher: '', description: '', category: '', category_is_custom: false, language: '', language_is_custom: false, isbn: '', price: '',
   condition: 'New', format: 'Physical', stock_quantity: '1', cover_image: null, back_cover: null,
   additional_images: [], interior_previews: [], ebook_file: null, ebook_rights_confirmed: false,
 };
@@ -207,20 +210,55 @@ const StatusBadge: FC<{ status: string }> = ({ status }) => {
 const ListingEditor: FC<{ listing: SellerListing | null; onClose: () => void; onSave: (input: ListingInput, id: number | undefined, intent: 'draft' | 'submit') => Promise<void> }> = ({ listing, onClose, onSave }) => {
   const [form, setForm] = useState<ListingInput>(listing ? {
     title: listing.title, author: listing.author, publisher: listing.publisher ?? '', description: listing.description ?? '',
-    category: listing.category, language: listing.language ?? '', isbn: listing.isbn ?? '', price: listing.price ? String(listing.price) : '',
+    category: listing.category, category_is_custom: isCustomTaxonomyValue(listing.category, BOOK_CATEGORIES),
+    language: listing.language ?? '', language_is_custom: isCustomTaxonomyValue(listing.language ?? '', BOOK_LANGUAGES),
+    isbn: listing.isbn ?? '', price: listing.price ? String(listing.price) : '',
     condition: listing.condition, format: listing.format, stock_quantity: String(listing.stock_quantity), cover_image: null,
     back_cover: null, additional_images: [], interior_previews: [], ebook_file: null, ebook_rights_confirmed: false,
   } : { ...EMPTY_FORM });
+  const [step, setStep] = useState<'edit' | 'preview'>('edit');
   const [preview, setPreview] = useState(listing?.cover_image_path ?? '');
+  const [localMediaPreviews, setLocalMediaPreviews] = useState<{ id: string; media_type: string; file_path: string }[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const previewObjectUrl = useRef<string | null>(null);
+  const activeLocalObjectUrls = useRef<Set<string>>(new Set());
   useEffect(() => () => { if (previewObjectUrl.current) URL.revokeObjectURL(previewObjectUrl.current); }, []);
+  useEffect(() => () => {
+    for (const url of activeLocalObjectUrls.current) URL.revokeObjectURL(url);
+  }, []);
+  useEffect(() => {
+    const activeUrls = new Set(localMediaPreviews.map((image) => image.file_path));
+    for (const previousUrl of activeLocalObjectUrls.current) {
+      if (!activeUrls.has(previousUrl)) URL.revokeObjectURL(previousUrl);
+    }
+    activeLocalObjectUrls.current = activeUrls;
+  }, [localMediaPreviews]);
 
   const set = <K extends keyof ListingInput>(key: K, value: ListingInput[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
     setFieldErrors((current) => { const next = { ...current }; delete next[key]; return next; });
+    setError('');
+  };
+  const chooseCategory = (value: string) => {
+    const custom = value === OTHER_TAXONOMY_VALUE;
+    setForm((current) => ({
+      ...current,
+      category: custom ? (current.category_is_custom ? current.category : '') : value,
+      category_is_custom: custom,
+    }));
+    setFieldErrors((current) => { const next = { ...current }; delete next.category; return next; });
+    setError('');
+  };
+  const chooseLanguage = (value: string) => {
+    const custom = value === OTHER_TAXONOMY_VALUE;
+    setForm((current) => ({
+      ...current,
+      language: custom ? (current.language_is_custom ? current.language : '') : value,
+      language_is_custom: custom,
+    }));
+    setFieldErrors((current) => { const next = { ...current }; delete next.language; return next; });
     setError('');
   };
   const handleCover = (event: ChangeEvent<HTMLInputElement>) => {
@@ -242,6 +280,13 @@ const ListingEditor: FC<{ listing: SellerListing | null; onClose: () => void; on
       setFieldErrors((current) => ({ ...current, [key]: `Choose up to ${maxCount} JPEG, PNG, or WebP images, 5 MB each.` }));
       return;
     }
+    const mediaType = key === 'back_cover' ? 'back_cover' : key === 'additional_images' ? 'additional' : 'interior_preview';
+    const retainedPreviews = localMediaPreviews.filter((image) => image.media_type !== mediaType);
+    const newPreviews = files.map((file, index) => {
+      const filePath = URL.createObjectURL(file);
+      return { id: `local-${mediaType}-${index}`, media_type: mediaType, file_path: filePath };
+    });
+    setLocalMediaPreviews([...retainedPreviews, ...newPreviews]);
     set(key, (key === 'back_cover' ? files[0] : files) as ListingInput[typeof key]);
   };
   const handleEbookFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -256,7 +301,7 @@ const ListingEditor: FC<{ listing: SellerListing | null; onClose: () => void; on
     set('ebook_file', file);
   };
 
-  const save = async (intent: 'draft' | 'submit') => {
+  const validate = (intent: 'draft' | 'submit'): boolean => {
     const errors: Record<string, string> = {};
     if (intent === 'submit') {
       if (!form.title.trim()) errors.title = 'Book title is required.';
@@ -268,29 +313,57 @@ const ListingEditor: FC<{ listing: SellerListing | null; onClose: () => void; on
       if (form.format === 'E-book' && !form.ebook_rights_confirmed) errors.ebook_rights_confirmed = 'Confirm that you are authorized to distribute this e-book.';
     }
     if (form.isbn.trim() && !/^(?:\d{9}[\dXx]|\d{13})$/.test(form.isbn.trim().replace(/[ -]/g, ''))) errors.isbn = 'Enter an ISBN-10 or ISBN-13.';
-    if (Object.keys(errors).length) { setFieldErrors(errors); return; }
+    if (Object.keys(errors).length) { setFieldErrors(errors); return false; }
+    setFieldErrors({});
+    return true;
+  };
+  const save = async (intent: 'draft' | 'submit') => {
+    if (!validate(intent)) return;
     setSaving(true); setError(''); setFieldErrors({});
     try { await onSave(form, listing?.id, intent); }
     catch (cause) { setError(apiErrorMessage(cause, 'The listing could not be saved.')); setFieldErrors(apiFieldErrors(cause)); }
     finally { setSaving(false); }
   };
-  const submit = (event: FormEvent) => { event.preventDefault(); void save('submit'); };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (step === 'preview') void save('submit');
+    else if (validate('submit')) setStep('preview');
+  };
   const inputClass = (key: string) => `mt-1.5 w-full rounded-lg border ${fieldErrors[key] ? 'border-red-500' : 'border-[var(--border)]'} bg-[var(--bg)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]`;
   const fieldError = (key: string) => fieldErrors[key] && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{fieldErrors[key]}</span>;
   const fileNames = (files: File[] | File | null | undefined) => Array.isArray(files) ? files.map((file) => file.name).join(', ') : files?.name ?? '';
   const uploadClass = 'mt-1.5 block w-full text-sm text-[var(--text-muted)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--surface-hover)] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[var(--text)]';
   const existingMedia = listing?.media ?? [];
+  const productPreview = buildSellerListingPreview(form, listing, preview || null, localMediaPreviews);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/55 p-3 sm:p-6" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !saving) onClose(); }}>
       <form onSubmit={submit} noValidate role="dialog" aria-modal="true" aria-labelledby="listing-editor-title" className="my-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl">
-        <header className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4 sm:px-6"><div><p className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--accent)]">Listing details</p><h2 id="listing-editor-title" className="mt-1 text-lg font-bold text-[var(--text)]">{listing ? 'Edit book listing' : 'Add a book'}</h2></div><button type="button" disabled={saving} onClick={onClose} aria-label="Close form" className="rounded-lg px-3 py-1.5 text-xl text-[var(--text-muted)] hover:bg-[var(--surface-hover)]">×</button></header>
-        <div className="grid max-h-[75vh] gap-5 overflow-y-auto p-5 sm:grid-cols-2 sm:p-6">
+        <header className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4 sm:px-6"><div><p className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--accent)]">{step === 'edit' ? 'Listing details' : 'Customer-facing preview'}</p><h2 id="listing-editor-title" className="mt-1 text-lg font-bold text-[var(--text)]">{step === 'preview' ? 'Review before submission' : listing ? 'Edit book listing' : 'Add a book'}</h2></div><button type="button" disabled={saving} onClick={onClose} aria-label="Close form" className="rounded-lg px-3 py-1.5 text-xl text-[var(--text-muted)] hover:bg-[var(--surface-hover)]">×</button></header>
+        {step === 'edit' ? <div className="grid max-h-[75vh] gap-5 overflow-y-auto p-5 sm:grid-cols-2 sm:p-6">
           <label className="text-xs font-semibold text-[var(--text-muted)] sm:col-span-2">Book title<input autoFocus maxLength={255} value={form.title} onChange={(event) => set('title', event.target.value)} className={inputClass('title')} />{fieldError('title')}</label>
           <label className="text-xs font-semibold text-[var(--text-muted)]">Author<input maxLength={255} value={form.author} onChange={(event) => set('author', event.target.value)} className={inputClass('author')} />{fieldError('author')}</label>
           <label className="text-xs font-semibold text-[var(--text-muted)]">Publisher <span className="font-normal">(optional)</span><input maxLength={255} value={form.publisher} onChange={(event) => set('publisher', event.target.value)} className={inputClass('publisher')} /></label>
-          <label className="text-xs font-semibold text-[var(--text-muted)]">Category / genre<input maxLength={100} value={form.category} onChange={(event) => set('category', event.target.value)} className={inputClass('category')} />{fieldError('category')}</label>
-          <label className="text-xs font-semibold text-[var(--text-muted)]">Language <span className="font-normal">(optional)</span><input maxLength={100} value={form.language} onChange={(event) => set('language', event.target.value)} className={inputClass('language')} /></label>
+          <div className="text-xs font-semibold text-[var(--text-muted)]">
+            <label htmlFor="listing-category">Category / genre</label>
+            <select id="listing-category" value={taxonomySelectValue(form.category, form.category_is_custom, BOOK_CATEGORIES)} onChange={(event) => chooseCategory(event.target.value)} className={inputClass('category')}>
+              <option value="">Choose a category</option>
+              {BOOK_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+              <option value={OTHER_TAXONOMY_VALUE}>Other</option>
+            </select>
+            {form.category_is_custom && <><label htmlFor="listing-category-custom" className="mt-2 block">Custom category or genre</label><input id="listing-category-custom" maxLength={100} placeholder="Enter a category or genre" value={form.category} onChange={(event) => set('category', event.target.value)} className={inputClass('category')} /></>}
+            {fieldError('category')}
+          </div>
+          <div className="text-xs font-semibold text-[var(--text-muted)]">
+            <label htmlFor="listing-language">Language <span className="font-normal">(optional)</span></label>
+            <select id="listing-language" value={taxonomySelectValue(form.language, form.language_is_custom, BOOK_LANGUAGES)} onChange={(event) => chooseLanguage(event.target.value)} className={inputClass('language')}>
+              <option value="">Choose a language</option>
+              {BOOK_LANGUAGES.map((language) => <option key={language} value={language}>{language}</option>)}
+              <option value={OTHER_TAXONOMY_VALUE}>Other</option>
+            </select>
+            {form.language_is_custom && <><label htmlFor="listing-language-custom" className="mt-2 block">Custom book language</label><input id="listing-language-custom" maxLength={100} placeholder="Enter a language" value={form.language} onChange={(event) => set('language', event.target.value)} className={inputClass('language')} /></>}
+            {fieldError('language')}
+          </div>
           <label className="text-xs font-semibold text-[var(--text-muted)]">ISBN <span className="font-normal">(optional)</span><input maxLength={20} value={form.isbn} onChange={(event) => set('isbn', event.target.value)} className={inputClass('isbn')} />{fieldError('isbn')}</label>
           <label className="text-xs font-semibold text-[var(--text-muted)]">Price (₱)<input type="number" min="0" max="99999999.99" step="0.01" value={form.price} onChange={(event) => set('price', event.target.value)} className={inputClass('price')} />{fieldError('price')}</label>
           <label className="text-xs font-semibold text-[var(--text-muted)]">Listing type<select value={form.format} onChange={(event) => set('format', event.target.value as ListingInput['format'])} className={inputClass('format')}><option value="Physical">Physical Book</option><option value="E-book">E-book</option></select></label>
@@ -311,8 +384,23 @@ const ListingEditor: FC<{ listing: SellerListing | null; onClose: () => void; on
           </>}
           {error && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300 sm:col-span-2">{error}</p>}
           <p className="text-xs leading-5 text-[var(--text-muted)] sm:col-span-2">Drafts are private. Submitted listings stay hidden from buyers until an authorized staff member or administrator approves them. Editing an approved listing hides it while it is reviewed again.</p>
-        </div>
-        <footer className="flex flex-wrap justify-end gap-2 border-t border-[var(--border)] px-5 py-4 sm:px-6"><button type="button" disabled={saving} onClick={onClose} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm">Cancel</button><button type="button" disabled={saving} onClick={() => void save('draft')} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm disabled:opacity-50">{saving ? 'Saving…' : 'Save draft'}</button><button type="submit" disabled={saving} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Saving…' : listing ? 'Submit for review' : 'Submit for review'}</button></footer>
+        </div> : <div className="max-h-[75vh] space-y-4 overflow-y-auto p-4 sm:p-6">
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-200">Seller preview only. This step does not save, publish, or send your listing to staff. Confirm submission when you are ready for human review.</p>
+          <MarketplaceProductDetail book={productPreview} sellerPreview />
+          {error && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</p>}
+          {Object.keys(fieldErrors).length > 0 && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">Some listing details need attention. Return to editing to review the marked fields.</p>}
+        </div>}
+        <footer className="flex flex-wrap justify-end gap-2 border-t border-[var(--border)] px-5 py-4 sm:px-6">
+          {step === 'edit' ? <>
+            <button type="button" disabled={saving} onClick={onClose} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm">Cancel</button>
+            <button type="button" disabled={saving} onClick={() => void save('draft')} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm disabled:opacity-50">{saving ? 'Saving…' : 'Save draft'}</button>
+            <button type="submit" disabled={saving} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Preview listing</button>
+          </> : <>
+            <button type="button" disabled={saving} onClick={onClose} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm">Cancel</button>
+            <button type="button" disabled={saving} onClick={() => setStep('edit')} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm">Back to editing</button>
+            <button type="submit" disabled={saving} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Submitting…' : 'Confirm & submit for review'}</button>
+          </>}
+        </footer>
       </form>
     </div>
   );

@@ -23,6 +23,8 @@ import SellerApplicationPage from './pages/auth/SellerApplicationPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import StaffAddAccountPage from './pages/StaffAddAccountPage';
 import MarketplacePage from './pages/MarketplacePage';
+import CartPage from './pages/CartPage';
+import PublicSellerPage from './pages/PublicSellerPage';
 import BackOfficePage from './pages/backoffice/BackOfficePage';
 
 // Seller Workspace pages
@@ -59,6 +61,8 @@ const AppContent: FC<{ resolvedScheme: 'light' | 'dark'; toggle: () => void }> =
         {/* Public */}
         <Route path="/books" element={<MarketplacePage />} />
         <Route path="/books/:bookId" element={<MarketplacePage />} />
+        <Route path="/sellers/:sellerId" element={<PublicSellerPage />} />
+        <Route path="/cart" element={<ProtectedRoute allowedRoles={['customer']}><CartPage /></ProtectedRoute>} />
         <Route path="/" element={<><LandingPage /><Footer /></>} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

@@ -1,6 +1,7 @@
 import { type FC } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { CART_UPDATED_EVENT, getCart, type CartPayload } from '../services/cartApi';
 import ThemeToggle from './ThemeToggle';
 import { useState, useEffect } from 'react';
 
@@ -41,6 +42,7 @@ const navLinks = [
 const Navbar: FC<NavbarProps> = ({ resolvedScheme, onToggleTheme }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
   const { user, authenticated, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -55,6 +57,24 @@ const Navbar: FC<NavbarProps> = ({ resolvedScheme, onToggleTheme }) => {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  useEffect(() => {
+    if (!authenticated || user?.role !== 'customer') return;
+    let active = true;
+    let receivedCartUpdate = false;
+    const updateCartCount = (event: Event) => {
+      const detail = (event as CustomEvent<CartPayload>).detail;
+      if (typeof detail?.item_count === 'number') {
+        receivedCartUpdate = true;
+        setCartCount(detail.item_count);
+      }
+    };
+    window.addEventListener(CART_UPDATED_EVENT, updateCartCount);
+    void getCart().then((cart) => { if (active && !receivedCartUpdate) setCartCount(cart.item_count); }).catch(() => { if (active && !receivedCartUpdate) setCartCount(0); });
+    return () => { active = false; window.removeEventListener(CART_UPDATED_EVENT, updateCartCount); };
+  }, [authenticated, user?.id, user?.role]);
+
+  const visibleCartCount = authenticated && user?.role === 'customer' ? cartCount : 0;
 
   const handleLogout = async () => {
     await logout();
@@ -119,6 +139,7 @@ const Navbar: FC<NavbarProps> = ({ resolvedScheme, onToggleTheme }) => {
                 onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLAnchorElement).style.color = 'var(--accent)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)'; }}
               >Dashboard</Link>
+              {user.role === 'customer' && <Link to="/cart" className="nav-desktop-link cart-nav-link" aria-label={`Shopping cart, ${visibleCartCount} items`}>Cart <span className="cart-nav-badge">{visibleCartCount}</span></Link>}
               <button onClick={handleLogout} className="nav-cta-btn"
                 style={{ cursor: 'pointer', border: 'none' }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.9'; }}
@@ -165,6 +186,7 @@ const Navbar: FC<NavbarProps> = ({ resolvedScheme, onToggleTheme }) => {
               <Link to="/account" onClick={() => setIsMenuOpen(false)}
                 style={{ ...linkStyle, fontSize: '0.95rem', padding: '10px 12px', display: 'block', border: '1px solid var(--border)', textAlign: 'center', borderRadius: '8px', background: 'var(--surface)' }}
               >{user.first_name}'s Account</Link>
+              {user.role === 'customer' && <Link to="/cart" onClick={() => setIsMenuOpen(false)} className="mobile-cart-link">Shopping cart <span className="cart-nav-badge">{visibleCartCount}</span></Link>}
               <button onClick={handleLogout}
                 style={{ textDecoration: 'none', textAlign: 'center', fontSize: '0.95rem', fontWeight: 600, padding: '10px 12px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', color: 'white', marginTop: '4px', border: 'none', cursor: 'pointer', fontFamily: "'Geist Mono', monospace" }}
               >Log Out</button>

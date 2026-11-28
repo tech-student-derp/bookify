@@ -10,6 +10,7 @@ require_once __DIR__ . '/../utils/csrf.php';
 require_once __DIR__ . '/../utils/audit.php';
 require_once __DIR__ . '/../utils/private_listing_files.php';
 require_once __DIR__ . '/../utils/listing_media.php';
+require_once __DIR__ . '/../utils/listing_taxonomy.php';
 require_once __DIR__ . '/../middleware/auth.php';
 
 set_exception_handler(static function (Throwable $e): void {
@@ -458,8 +459,20 @@ function validateListingData(array $body, bool $forSubmission): array {
     $author = $text('author', 255, $forSubmission);
     $publisher = $text('publisher', 255);
     $description = $text('description', 10000);
-    $category = $text('category', 100, $forSubmission);
-    $language = $text('language', 100);
+    $categoryResult = normalizeListingTaxonomyValue(
+        $body['category'] ?? '', $body['category_is_custom'] ?? null, listingCategoryOptions(), $forSubmission
+    );
+    if ($categoryResult['error'] !== null) {
+        errorResponse('Enter a valid category or genre.', 422, ['errors' => ['category' => $categoryResult['error']]]);
+    }
+    $languageResult = normalizeListingTaxonomyValue(
+        $body['language'] ?? '', $body['language_is_custom'] ?? null, listingLanguageOptions(), false
+    );
+    if ($languageResult['error'] !== null) {
+        errorResponse('Enter a valid language.', 422, ['errors' => ['language' => $languageResult['error']]]);
+    }
+    $category = $categoryResult['value'];
+    $language = $languageResult['value'];
     $isbn = $text('isbn', 20);
     if ($isbn !== '' && !preg_match('/^(?:[0-9]{9}[0-9Xx]|[0-9]{13})$/D', str_replace([' ', '-'], '', $isbn))) {
         errorResponse('Enter a valid 10- or 13-character ISBN.', 422, ['errors' => ['isbn' => 'Use a valid ISBN-10 or ISBN-13.']]);

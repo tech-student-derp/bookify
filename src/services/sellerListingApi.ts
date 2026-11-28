@@ -1,4 +1,5 @@
 import { getCsrfToken } from './authApi';
+import { appendListingTaxonomyFields } from '../data/listingTaxonomy';
 
 const API_BASE = '/backend/controllers/ListingController.php';
 
@@ -42,7 +43,9 @@ export interface ListingInput {
   publisher: string;
   description: string;
   category: string;
+  category_is_custom: boolean;
   language: string;
+  language_is_custom: boolean;
   isbn: string;
   price: string;
   condition: BookCondition;
@@ -77,7 +80,7 @@ async function request<T extends ApiResult>(action: string, options: { method?: 
   return data;
 }
 
-function listingFormData(input: ListingInput, intent: 'draft' | 'submit', id?: number): FormData {
+export function listingFormData(input: ListingInput, intent: 'draft' | 'submit', id?: number): FormData {
   const form = new FormData();
   if (id !== undefined) form.append('id', String(id));
   form.append('intent', intent);
@@ -85,8 +88,7 @@ function listingFormData(input: ListingInput, intent: 'draft' | 'submit', id?: n
   form.append('author', input.author.trim());
   form.append('publisher', input.publisher.trim());
   form.append('description', input.description.trim());
-  form.append('category', input.category.trim());
-  form.append('language', input.language.trim());
+  appendListingTaxonomyFields(form, input);
   form.append('isbn', input.isbn.trim());
   form.append('price', input.price);
   form.append('condition', input.condition);
