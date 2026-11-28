@@ -2,6 +2,7 @@ import { type FC } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { User } from '../../types/auth';
 import ThemeToggle from '../../components/ThemeToggle';
+import NotificationCenter from '../../components/NotificationCenter';
 
 interface SellerHeaderProps {
   user: User;
@@ -31,7 +32,7 @@ export const SellerHeader: FC<SellerHeaderProps> = ({
   const initials = `${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`.toUpperCase() || 'S';
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 lg:px-8 border-b border-[var(--border)] bg-[var(--surface)]/80 backdrop-blur-md transition-colors duration-200">
+    <header className="seller-dashboard-header sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 lg:px-8 border-b border-[var(--border)] bg-[var(--surface)]/80 backdrop-blur-md transition-colors duration-200">
       {/* Left: Mobile hamburger & Breadcrumb */}
       <div className="flex items-center gap-3">
         <button
@@ -88,6 +89,8 @@ export const SellerHeader: FC<SellerHeaderProps> = ({
         <div className="flex items-center">
           <ThemeToggle resolvedScheme={resolvedScheme} onToggle={onToggleTheme} />
         </div>
+
+        <NotificationCenter />
 
         {/* Profile Pill */}
         <div className="flex items-center gap-2 pl-2 border-l border-[var(--border)]">

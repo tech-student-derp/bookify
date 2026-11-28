@@ -55,6 +55,7 @@ const DashboardPage: FC<DashboardPageProps> = ({ initialTab = 'overview' }) => {
         fontFamily: "'Geist Mono', monospace",
         display: 'flex',
       }}
+      className="customer-dashboard"
     >
       {/* Sidebar */}
       <DashboardSidebar
@@ -74,7 +75,7 @@ const DashboardPage: FC<DashboardPageProps> = ({ initialTab = 'overview' }) => {
           flexDirection: 'column',
           minWidth: 0,
         }}
-        className="lg:ml-[260px]"
+        className="customer-dashboard-main lg:ml-[260px]"
       >
         {/* Top Navigation Bar */}
         <DashboardHeader

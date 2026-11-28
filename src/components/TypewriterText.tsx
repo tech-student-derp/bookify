@@ -24,7 +24,7 @@ type AnimPhase =
 
 interface TypewriterTextProps {
   initialLanguage: LanguageEntry;
-  /** called each time the language rotates so parent can update the badge */
+  /** called on each language rotation so the parent can persist the sequence */
   onLanguageChange?: (lang: LanguageEntry) => void;
 }
 

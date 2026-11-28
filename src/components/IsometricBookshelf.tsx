@@ -1,24 +1,23 @@
 import { useRef, useState, useCallback, Suspense, type FC } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 
 // ── Color Palettes ────────────────────────────────────────────────────────────
 const BOOK_PALETTES = [
-  { cover: '#10b981', spine: '#059669', gold: '#fde047' }, // Bookify Emerald
-  { cover: '#2563eb', spine: '#1d4ed8', gold: '#facc15' }, // Sapphire Blue
-  { cover: '#f97316', spine: '#ea580c', gold: '#fef08a' }, // Warm Amber
-  { cover: '#8b5cf6', spine: '#7c3aed', gold: '#fde047' }, // Amethyst Purple
-  { cover: '#e11d48', spine: '#be123c', gold: '#fef08a' }, // Crimson Red
-  { cover: '#06b6d4', spine: '#0891b2', gold: '#facc15' }, // Teal
-  { cover: '#d97706', spine: '#b45309', gold: '#fef08a' }, // Honey Gold
-  { cover: '#ec4899', spine: '#db2777', gold: '#fde047' }, // Rose Pink
+  { cover: '#2e7770', spine: '#205c56', gold: '#d7b979' },
+  { cover: '#397f91', spine: '#285e70', gold: '#ead7a7' },
+  { cover: '#bd7556', spine: '#92533b', gold: '#ecd6a2' },
+  { cover: '#6e8f68', spine: '#4f7150', gold: '#e5cf9b' },
+  { cover: '#3b5f4b', spine: '#294635', gold: '#d9c28d' },
+  { cover: '#789b92', spine: '#53776f', gold: '#ead6a2' },
+  { cover: '#bd9b5b', spine: '#957442', gold: '#f0dfa9' },
+  { cover: '#657aa0', spine: '#465a7d', gold: '#e1d09f' },
 ];
 
-const WOOD_FRAME = '#78461f';   // Oak outer pillars & beams
-const WOOD_PLANK = '#8c5325';   // Shelf inner planks
-const WOOD_DETAIL = '#5f3718';  // Shadowed accents & bookends
-const PAGE_COLOR = '#faf7ed';   // Creamy paper
+const WOOD_PLANK = '#fffdf7';
+const WOOD_DETAIL = '#d8d0bf';
+const PAGE_COLOR = '#fffdf5';
 
 // ── Single Upright Voxel Book ─────────────────────────────────────────────────
 interface UprightBookProps {
@@ -43,12 +42,14 @@ const UprightBook: FC<UprightBookProps> = ({
   const groupRef = useRef<THREE.Group>(null);
   const [active, setActive] = useState(false);
   const pullRef = useRef(0);
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const palette = BOOK_PALETTES[colorIndex % BOOK_PALETTES.length];
 
-  useFrame((_state, delta) => {
+  useFrame((state, delta) => {
     const target = active ? 0.36 : 0;
-    pullRef.current += (target - pullRef.current) * Math.min(1, delta * 10);
+    if (reducedMotion) pullRef.current = target;
+    else pullRef.current += (target - pullRef.current) * Math.min(1, delta * 10);
 
     if (groupRef.current) {
       groupRef.current.position.set(
@@ -57,18 +58,21 @@ const UprightBook: FC<UprightBookProps> = ({
         position[2] + pullRef.current,
       );
     }
+    if (!reducedMotion && Math.abs(target - pullRef.current) > 0.001) state.invalidate();
   });
 
-  const handlePointerEnter = useCallback((e: { stopPropagation: () => void }) => {
+  const handlePointerEnter = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
+    if (e.pointerType === 'touch') return;
     setActive(true);
   }, []);
 
-  const handlePointerLeave = useCallback(() => {
+  const handlePointerLeave = useCallback((e: ThreeEvent<PointerEvent>) => {
+    if (e.pointerType === 'touch') return;
     setActive(false);
   }, []);
 
-  const handlePointerDown = useCallback((e: { stopPropagation: () => void }) => {
+  const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     setActive((prev) => !prev);
   }, []);
@@ -160,12 +164,14 @@ const StackedBook: FC<StackedBookProps> = ({
   const groupRef = useRef<THREE.Group>(null);
   const [active, setActive] = useState(false);
   const pullRef = useRef(0);
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const palette = BOOK_PALETTES[colorIndex % BOOK_PALETTES.length];
 
-  useFrame((_state, delta) => {
+  useFrame((state, delta) => {
     const target = active ? 0.34 : 0;
-    pullRef.current += (target - pullRef.current) * Math.min(1, delta * 10);
+    if (reducedMotion) pullRef.current = target;
+    else pullRef.current += (target - pullRef.current) * Math.min(1, delta * 10);
     if (groupRef.current) {
       groupRef.current.position.set(
         position[0],
@@ -173,6 +179,7 @@ const StackedBook: FC<StackedBookProps> = ({
         position[2] + pullRef.current,
       );
     }
+    if (!reducedMotion && Math.abs(target - pullRef.current) > 0.001) state.invalidate();
   });
 
   return (
@@ -181,9 +188,10 @@ const StackedBook: FC<StackedBookProps> = ({
       position={position}
       onPointerEnter={(e) => {
         e.stopPropagation();
+        if (e.pointerType === 'touch') return;
         setActive(true);
       }}
-      onPointerLeave={() => setActive(false)}
+      onPointerLeave={(e) => { if (e.pointerType !== 'touch') setActive(false); }}
       onPointerDown={(e) => {
         e.stopPropagation();
         setActive((prev) => !prev);
@@ -213,332 +221,93 @@ const StackedBook: FC<StackedBookProps> = ({
   );
 };
 
-// ── Voxel Plant in Terracotta Pot (Decorative Minecraft Accent) ───────────────
-const VoxelPlant: FC<{ position: [number, number, number] }> = ({ position }) => {
-  return (
-    <group position={position}>
-      {/* Terracotta Pot */}
-      <mesh position={[0, 0.11, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.32, 0.22, 0.32]} />
-        <meshStandardMaterial color="#c25c34" roughness={0.85} />
-      </mesh>
-      {/* Pot Rim */}
-      <mesh position={[0, 0.23, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.36, 0.04, 0.36]} />
-        <meshStandardMaterial color="#ad4d28" roughness={0.8} />
-      </mesh>
-      {/* Soil */}
-      <mesh position={[0, 0.24, 0]}>
-        <boxGeometry args={[0.30, 0.015, 0.30]} />
-        <meshStandardMaterial color="#3e2714" roughness={1.0} />
-      </mesh>
-      {/* Succulent Leaves */}
-      <mesh position={[0, 0.35, 0]} castShadow>
-        <boxGeometry args={[0.15, 0.20, 0.15]} />
-        <meshStandardMaterial color="#22c55e" roughness={0.6} />
-      </mesh>
-      <mesh position={[0.07, 0.32, 0]} castShadow>
-        <boxGeometry args={[0.11, 0.13, 0.11]} />
-        <meshStandardMaterial color="#16a34a" roughness={0.6} />
-      </mesh>
-      <mesh position={[-0.07, 0.30, 0.04]} castShadow>
-        <boxGeometry args={[0.11, 0.11, 0.11]} />
-        <meshStandardMaterial color="#15803d" roughness={0.6} />
-      </mesh>
-      {/* Flower Bud */}
-      <mesh position={[0, 0.47, 0]} castShadow>
-        <boxGeometry args={[0.065, 0.065, 0.065]} />
-        <meshStandardMaterial color="#f43f5e" roughness={0.5} />
-      </mesh>
-    </group>
-  );
-};
+// Floating shelves and curated book groups inspired by the reference model.
+const FloatingShelf: FC<{ level: number }> = ({ level }) => (
+  <group>
+    <mesh position={[0, level - 0.06, 0]} castShadow receiveShadow>
+      <boxGeometry args={[4.5, 0.12, 0.82]} />
+      <meshStandardMaterial color={WOOD_PLANK} roughness={0.62} />
+    </mesh>
+    <mesh position={[-1.93, level - 0.18, -0.12]} rotation={[0, 0, 0.48]} castShadow>
+      <boxGeometry args={[0.055, 0.28, 0.08]} />
+      <meshStandardMaterial color={WOOD_DETAIL} roughness={0.75} />
+    </mesh>
+    <mesh position={[1.93, level - 0.18, -0.12]} rotation={[0, 0, -0.48]} castShadow>
+      <boxGeometry args={[0.055, 0.28, 0.08]} />
+      <meshStandardMaterial color={WOOD_DETAIL} roughness={0.75} />
+    </mesh>
+  </group>
+);
 
-// ── Non-Overlapping Minecraft Bookshelf Frame ─────────────────────────────────
-// Each beam fits cleanly against its neighbours without overlapping volumes
-const BookshelfFrame: FC = () => {
-  const outerW = 2.4;
-  const outerH = 2.4;
-  const depth = 1.0;
-  const pillarW = 0.14; // Width of corner pillars
-  const beamH = 0.14;   // Height of top and bottom beams
-
-  // Inner span between outer pillars: 2.4 - 0.28 = 2.12
-  const innerW = outerW - pillarW * 2;
-  // Inner vertical opening between top & bottom beams: 2.4 - 0.28 = 2.12
-  const innerH = outerH - beamH * 2;
-
-  // Middle shelf divider
-  const shelfThickness = 0.10;
-  const shelfDepth = depth - 0.02; // Recessed by 0.01 front and back: NO coplanar face with frame!
-
-  // Vertical dividers fit cleanly above and below middle shelf:
-  // (2.12 - 0.10) / 2 = 1.01 height
-  const dividerH = (innerH - shelfThickness) / 2;
-  const dividerTopY = shelfThickness * 0.5 + dividerH * 0.5;
-  const dividerBottomY = -shelfThickness * 0.5 - dividerH * 0.5;
-
-  return (
-    <group>
-      {/* ── Solid Back Panel (Recessed safely inside back edge) ── */}
-      <mesh position={[0, 0, -depth * 0.5 + 0.025]} receiveShadow>
-        <boxGeometry args={[innerW - 0.01, innerH - 0.01, 0.03]} />
-        <meshStandardMaterial color={WOOD_DETAIL} roughness={0.9} />
-      </mesh>
-
-      {/* ── Left Pillar ── */}
-      <mesh position={[-outerW * 0.5 + pillarW * 0.5, 0, 0]} castShadow receiveShadow>
-        <boxGeometry args={[pillarW, outerH, depth]} />
-        <meshStandardMaterial color={WOOD_FRAME} roughness={0.7} />
-      </mesh>
-
-      {/* ── Right Pillar ── */}
-      <mesh position={[outerW * 0.5 - pillarW * 0.5, 0, 0]} castShadow receiveShadow>
-        <boxGeometry args={[pillarW, outerH, depth]} />
-        <meshStandardMaterial color={WOOD_FRAME} roughness={0.7} />
-      </mesh>
-
-      {/* ── Top Header Beam (Fits cleanly BETWEEN pillars - NO corner fighting) ── */}
-      <mesh position={[0, outerH * 0.5 - beamH * 0.5, 0]} castShadow receiveShadow>
-        <boxGeometry args={[innerW, beamH, depth]} />
-        <meshStandardMaterial color={WOOD_FRAME} roughness={0.7} />
-      </mesh>
-
-      {/* ── Top Crown Ledge (Rests ON TOP of frame) ── */}
-      <mesh position={[0, outerH * 0.5 + 0.03, 0]} castShadow receiveShadow>
-        <boxGeometry args={[outerW + 0.10, 0.06, depth + 0.06]} />
-        <meshStandardMaterial color={WOOD_PLANK} roughness={0.65} />
-      </mesh>
-
-      {/* ── Bottom Base Beam (Fits cleanly BETWEEN pillars - NO corner fighting) ── */}
-      <mesh position={[0, -outerH * 0.5 + beamH * 0.5, 0]} castShadow receiveShadow>
-        <boxGeometry args={[innerW, beamH, depth]} />
-        <meshStandardMaterial color={WOOD_FRAME} roughness={0.7} />
-      </mesh>
-
-      {/* ── Bottom Footer Base (Rests UNDER frame) ── */}
-      <mesh position={[0, -outerH * 0.5 - 0.03, 0]} receiveShadow>
-        <boxGeometry args={[outerW + 0.08, 0.06, depth + 0.06]} />
-        <meshStandardMaterial color={WOOD_DETAIL} roughness={0.8} />
-      </mesh>
-
-      {/* ── Middle Horizontal Shelf (Recessed depth prevents front/back fighting) ── */}
-      <mesh position={[0, 0, 0]} castShadow receiveShadow>
-        <boxGeometry args={[innerW, shelfThickness, shelfDepth]} />
-        <meshStandardMaterial color={WOOD_PLANK} roughness={0.75} />
-      </mesh>
-
-      {/* ── Top-Half Vertical Divider (Fits cleanly between top beam & middle shelf) ── */}
-      <mesh position={[0, dividerTopY, 0]} castShadow receiveShadow>
-        <boxGeometry args={[shelfThickness, dividerH, shelfDepth]} />
-        <meshStandardMaterial color={WOOD_PLANK} roughness={0.75} />
-      </mesh>
-
-      {/* ── Bottom-Half Vertical Divider (Fits cleanly between middle shelf & bottom beam) ── */}
-      <mesh position={[0, dividerBottomY, 0]} castShadow receiveShadow>
-        <boxGeometry args={[shelfThickness, dividerH, shelfDepth]} />
-        <meshStandardMaterial color={WOOD_PLANK} roughness={0.75} />
-      </mesh>
-    </group>
-  );
-};
-
-// ── Complete Interactive Bookshelf Scene ──────────────────────────────────────
 const BookshelfScene: FC = () => {
+  const top = 1.05;
+  const middle = -0.05;
+  const bottom = -1.15;
+  const upright = (shelf: number, x: number, index: number, height = 0.84, angle = 0) => (
+    <UprightBook
+      key={`${shelf}-${x}-${index}`}
+      position={[x, shelf + height / 2 + 0.01, 0.02]}
+      rotation={[0, 0, angle]}
+      thickness={0.17 + (index % 3) * 0.025}
+      height={height}
+      depth={0.58 + (index % 2) * 0.06}
+      colorIndex={index}
+      hasRibbon={index % 5 === 0}
+    />
+  );
+
   return (
-    <group rotation={[0, -0.42, 0]} position={[0, 0, 0]}>
-      {/* Studio Lighting */}
-      <ambientLight intensity={0.75} />
-      <directionalLight
-        position={[5, 7, 6]}
-        intensity={1.7}
-        castShadow
-        shadow-mapSize={[1024, 1024]}
-        shadow-camera-near={1.0}
-        shadow-camera-far={20}
-        shadow-camera-left={-3.5}
-        shadow-camera-right={3.5}
-        shadow-camera-top={3.5}
-        shadow-camera-bottom={-3.5}
-        shadow-bias={-0.0002}
-      />
-      <pointLight position={[-3, 2, 4]} intensity={0.6} color="#fed7aa" />
-      <directionalLight position={[-4, 3, -4]} intensity={0.4} color="#bfdbfe" />
+    <group rotation={[0, -0.28, 0]}>
+      <ambientLight intensity={0.95} />
+      <directionalLight position={[4, 7, 5]} intensity={1.7} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-near={1} shadow-camera-far={18} shadow-camera-left={-4} shadow-camera-right={4} shadow-camera-top={4} shadow-camera-bottom={-4} />
+      <pointLight position={[-3, 2, 3]} intensity={0.42} color="#e0d8b7" />
+      <directionalLight position={[-4, 3, -3]} intensity={0.34} color="#b7d4ce" />
 
-      {/* Bookshelf Frame without any overlapping surfaces */}
-      <BookshelfFrame />
+      <FloatingShelf level={top} />
+      <FloatingShelf level={middle} />
+      <FloatingShelf level={bottom} />
 
-      {/* ═══════════════════════════════════════════════════════════════════════
-          CUBBY 1: Top-Left (Middle Shelf floor is at Y = +0.05)
-          Every book base sits at Y = +0.05. Clean spacing between all books.
-         ═══════════════════════════════════════════════════════════════════════ */}
-      <UprightBook
-        position={[-0.92, 0.48, 0.08]}
-        thickness={0.20}
-        height={0.86}
-        depth={0.68}
-        colorIndex={0}
-        hasRibbon
-      />
-      <UprightBook
-        position={[-0.72, 0.45, 0.06]}
-        thickness={0.16}
-        height={0.80}
-        depth={0.65}
-        colorIndex={1}
-      />
-      <UprightBook
-        position={[-0.53, 0.49, 0.08]}
-        thickness={0.18}
-        height={0.88}
-        depth={0.70}
-        colorIndex={2}
-      />
-      <UprightBook
-        position={[-0.35, 0.44, 0.06]}
-        thickness={0.15}
-        height={0.78}
-        depth={0.64}
-        colorIndex={3}
-      />
-      <UprightBook
-        position={[-0.17, 0.44, 0.08]}
-        rotation={[0, 0, -0.22]}
-        thickness={0.15}
-        height={0.80}
-        depth={0.66}
-        colorIndex={4}
-      />
+      {upright(top, -1.66, 0, 0.84, -0.05)}
+      {upright(top, -1.45, 1, 0.76)}
+      {upright(top, -1.25, 2, 0.92)}
+      {upright(top, -1.02, 3, 0.81)}
+      {upright(top, -0.81, 4, 0.88, 0.08)}
+      <StackedBook position={[0.72, top + 0.08, 0.04]} width={0.9} thickness={0.14} depth={0.58} colorIndex={5} />
+      <StackedBook position={[0.72, top + 0.225, 0.04]} width={0.84} thickness={0.13} depth={0.55} colorIndex={3} />
+      <StackedBook position={[0.72, top + 0.36, 0.04]} width={0.78} thickness={0.12} depth={0.52} colorIndex={1} />
+      {upright(top, 1.45, 6, 0.83)}
+      {upright(top, 1.67, 7, 0.9)}
 
-      {/* ═══════════════════════════════════════════════════════════════════════
-          CUBBY 2: Top-Right (Middle Shelf floor is at Y = +0.05)
-          Stacked books have small vertical separation (0.003) - zero face fighting.
-         ═══════════════════════════════════════════════════════════════════════ */}
-      {/* Bottom Stack Book */}
-      <StackedBook
-        position={[0.34, 0.12, 0.08]}
-        width={0.58}
-        thickness={0.14}
-        depth={0.65}
-        colorIndex={0}
-      />
-      {/* Middle Stack Book */}
-      <StackedBook
-        position={[0.34, 0.258, 0.08]}
-        width={0.54}
-        thickness={0.13}
-        depth={0.62}
-        colorIndex={2}
-      />
-      {/* Top Stack Book */}
-      <StackedBook
-        position={[0.35, 0.386, 0.08]}
-        width={0.50}
-        thickness={0.12}
-        depth={0.58}
-        colorIndex={1}
-      />
-
-      {/* Voxel Succulent Plant in Terracotta Pot */}
-      <VoxelPlant position={[0.78, 0.05, 0.08]} />
-
-      {/* ═══════════════════════════════════════════════════════════════════════
-          CUBBY 3: Bottom-Left (Bottom Base floor is at Y = -1.06)
-          Every book base sits at Y = -1.06. Strict non-overlapping X spans.
-         ═══════════════════════════════════════════════════════════════════════ */}
-      <UprightBook
-        position={[-0.92, -0.62, 0.09]}
-        thickness={0.20}
-        height={0.88}
-        depth={0.70}
-        colorIndex={5}
-      />
-      <UprightBook
-        position={[-0.73, -0.65, 0.07]}
-        thickness={0.16}
-        height={0.82}
-        depth={0.66}
-        colorIndex={6}
-        hasRibbon
-      />
-      <UprightBook
-        position={[-0.56, -0.68, 0.05]}
-        thickness={0.15}
-        height={0.76}
-        depth={0.64}
-        colorIndex={7}
-      />
-      <UprightBook
-        position={[-0.38, -0.61, 0.09]}
-        thickness={0.18}
-        height={0.90}
-        depth={0.72}
-        colorIndex={0}
-      />
-      <UprightBook
-        position={[-0.20, -0.64, 0.07]}
-        thickness={0.15}
-        height={0.84}
-        depth={0.66}
-        colorIndex={1}
-      />
-
-      {/* ═══════════════════════════════════════════════════════════════════════
-          CUBBY 4: Bottom-Right (Bottom Base floor is at Y = -1.06)
-          Bookend + leaning volume + tall tomes.
-         ═══════════════════════════════════════════════════════════════════════ */}
-      {/* Voxel Wooden Bookend */}
-      <mesh position={[0.18, -0.87, 0.08]} castShadow>
-        <boxGeometry args={[0.08, 0.38, 0.55]} />
-        <meshStandardMaterial color={WOOD_DETAIL} roughness={0.7} />
+      {upright(middle, -1.72, 2, 0.91)}
+      {upright(middle, -1.5, 5, 0.78, -0.08)}
+      {upright(middle, -1.29, 0, 0.88)}
+      {upright(middle, -0.58, 3, 0.9)}
+      {upright(middle, -0.36, 4, 0.78)}
+      <StackedBook position={[0.48, middle + 0.08, 0.04]} width={0.94} thickness={0.15} depth={0.58} colorIndex={0} />
+      <StackedBook position={[0.48, middle + 0.235, 0.04]} width={0.86} thickness={0.14} depth={0.56} colorIndex={6} />
+      <mesh position={[1.5, middle + 0.2, 0.04]} castShadow>
+        <dodecahedronGeometry args={[0.2, 0]} />
+        <meshStandardMaterial color="#bf704f" roughness={0.54} />
       </mesh>
-      {/* Leaning Book 1 */}
-      <UprightBook
-        position={[0.33, -0.66, 0.06]}
-        rotation={[0, 0, 0.16]}
-        thickness={0.15}
-        height={0.80}
-        depth={0.66}
-        colorIndex={3}
-      />
-      {/* Upright Book 2 */}
-      <UprightBook
-        position={[0.52, -0.63, 0.08]}
-        thickness={0.17}
-        height={0.86}
-        depth={0.70}
-        colorIndex={4}
-        hasRibbon
-      />
-      {/* Upright Book 3 */}
-      <UprightBook
-        position={[0.70, -0.66, 0.06]}
-        thickness={0.16}
-        height={0.80}
-        depth={0.65}
-        colorIndex={2}
-      />
-      {/* Upright Book 4 */}
-      <UprightBook
-        position={[0.89, -0.62, 0.09]}
-        thickness={0.18}
-        height={0.88}
-        depth={0.72}
-        colorIndex={5}
-      />
+      <mesh position={[1.88, middle + 0.17, 0.04]} castShadow>
+        <icosahedronGeometry args={[0.17, 0]} />
+        <meshStandardMaterial color="#d19b6a" roughness={0.58} />
+      </mesh>
 
-      {/* ── Soft Ground Contact Shadow ── */}
-      <ContactShadows
-        position={[0, -1.26, 0]}
-        opacity={0.45}
-        scale={4.8}
-        blur={2.4}
-        far={3.0}
-      />
+      {upright(bottom, -1.7, 7, 0.9)}
+      {upright(bottom, -1.48, 6, 0.8)}
+      {upright(bottom, -1.26, 1, 0.86, -0.08)}
+      {upright(bottom, -0.52, 2, 0.92)}
+      {upright(bottom, -0.3, 3, 0.82)}
+      {upright(bottom, -0.08, 4, 0.9)}
+      <StackedBook position={[0.86, bottom + 0.08, 0.04]} width={0.94} thickness={0.15} depth={0.62} colorIndex={1} />
+      <StackedBook position={[0.86, bottom + 0.235, 0.04]} width={0.9} thickness={0.14} depth={0.58} colorIndex={5} />
+      <StackedBook position={[0.86, bottom + 0.38, 0.04]} width={0.84} thickness={0.13} depth={0.55} colorIndex={0} />
+
+      <ContactShadows position={[0, -1.34, 0]} opacity={0.28} scale={5.4} blur={2.8} far={3.5} />
     </group>
   );
 };
-
 // ── WebGL Fallback Presentation ───────────────────────────────────────────────
 const BookshelfFallback: FC = () => (
   <div
@@ -547,14 +316,14 @@ const BookshelfFallback: FC = () => (
       aspectRatio: '1 / 1.05',
       maxWidth: '480px',
       borderRadius: '16px',
-      background: 'linear-gradient(135deg, var(--bg-secondary), var(--surface))',
-      border: '1px solid var(--border)',
+      background: '#183d2b',
+      border: '1px solid #72996b',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       gap: '12px',
-      color: 'var(--text-muted)',
+      color: '#f7f4e8',
       fontSize: '0.85rem',
       textAlign: 'center',
       padding: '24px',
@@ -593,8 +362,9 @@ const IsometricBookshelf: FC = () => {
       <Suspense fallback={<BookshelfFallback />}>
         <Canvas
           shadows
+          frameloop="demand"
           // Tight near/far ratio and logarithmic depth buffer eliminate precision-based z-fighting
-          camera={{ position: [3.8, 2.5, 4.4], fov: 36, near: 0.5, far: 25 }}
+          camera={{ position: [4.9, 3.1, 6.1], fov: 38, near: 0.5, far: 25 }}
           gl={{
             antialias: true,
             alpha: true,

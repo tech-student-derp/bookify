@@ -1,50 +1,37 @@
-import { type FC } from 'react';
+import { useEffect, useRef, useState, type FC, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { CART_UPDATED_EVENT, getCart, type CartPayload } from '../services/cartApi';
+import NotificationCenter from './NotificationCenter';
 import ThemeToggle from './ThemeToggle';
-import { useState, useEffect } from 'react';
 
 interface NavbarProps {
   resolvedScheme: 'light' | 'dark';
   onToggleTheme: () => void;
 }
 
-const BookIcon: FC = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-  </svg>
-);
-
-const HamburgerIcon: FC = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <line x1="3" y1="6" x2="21" y2="6" />
-    <line x1="3" y1="12" x2="21" y2="12" />
-    <line x1="3" y1="18" x2="21" y2="18" />
-  </svg>
-);
-
-const CloseIcon: FC = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
-
 const navLinks = [
-  { label: 'Home', href: '/#home' },
-  { label: 'Explore Books', href: '/books' },
-  { label: 'Sell Books', href: '/#sell' },
-  { label: 'About', href: '/#about' },
+  { label: 'Home', to: '/#home' },
+  { label: 'Explore Books', to: '/books' },
+  { label: 'Sell Books', to: '/#sell' },
+  { label: 'About', to: '/#about' },
 ];
+
+const dashboardPath = {
+  customer: '/dashboard',
+  seller: '/seller/overview',
+  staff: '/staff',
+  admin: '/admin',
+} as const;
 
 const Navbar: FC<NavbarProps> = ({ resolvedScheme, onToggleTheme }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [cartCount, setCartCount] = useState(0);
+  const [accountOpen, setAccountOpen] = useState(false);
   const { user, authenticated, logout } = useAuth();
   const navigate = useNavigate();
+  const accountRef = useRef<HTMLDivElement>(null);
+  const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 10);
@@ -59,152 +46,161 @@ const Navbar: FC<NavbarProps> = ({ resolvedScheme, onToggleTheme }) => {
   }, []);
 
   useEffect(() => {
-    if (!authenticated || user?.role !== 'customer') return;
-    let active = true;
-    let receivedCartUpdate = false;
-    const updateCartCount = (event: Event) => {
-      const detail = (event as CustomEvent<CartPayload>).detail;
-      if (typeof detail?.item_count === 'number') {
-        receivedCartUpdate = true;
-        setCartCount(detail.item_count);
+    if (!accountOpen) return;
+    const focusFrame = window.requestAnimationFrame(() => {
+      accountMenuRef.current?.querySelector<HTMLElement>('[data-account-menu-item]')?.focus();
+    });
+    const onPointerDown = (event: PointerEvent) => {
+      if (accountRef.current && !accountRef.current.contains(event.target as Node)) setAccountOpen(false);
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAccountOpen(false);
+        accountTriggerRef.current?.focus();
       }
     };
-    window.addEventListener(CART_UPDATED_EVENT, updateCartCount);
-    void getCart().then((cart) => { if (active && !receivedCartUpdate) setCartCount(cart.item_count); }).catch(() => { if (active && !receivedCartUpdate) setCartCount(0); });
-    return () => { active = false; window.removeEventListener(CART_UPDATED_EVENT, updateCartCount); };
-  }, [authenticated, user?.id, user?.role]);
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [accountOpen]);
 
-  const visibleCartCount = authenticated && user?.role === 'customer' ? cartCount : 0;
+  const closeAccountMenu = (restoreFocus = true) => {
+    setAccountOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => accountTriggerRef.current?.focus());
+  };
+
+  const onAccountMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+      '[data-account-menu-item], .account-appearance-control button',
+    ));
+    const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+    let nextIndex: number | undefined;
+    if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % items.length;
+    if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + items.length) % items.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = items.length - 1;
+    if (nextIndex !== undefined && items.length > 0) {
+      event.preventDefault();
+      items[nextIndex].focus();
+    }
+  };
 
   const handleLogout = async () => {
+    closeAccountMenu(false);
     await logout();
     navigate('/');
-    setIsMenuOpen(false);
   };
 
-  const navStyle: React.CSSProperties = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    fontFamily: "'Inter', Arial, sans-serif",
-    transition: 'background 0.3s, box-shadow 0.3s, border-color 0.3s',
-    background: isScrolled ? 'color-mix(in oklch, var(--bg) 92%, transparent)' : 'transparent',
-    backdropFilter: isScrolled ? 'blur(12px)' : 'none',
-    WebkitBackdropFilter: isScrolled ? 'blur(12px)' : 'none',
-    borderBottom: isScrolled ? '1px solid var(--border)' : '1px solid transparent',
-    boxShadow: isScrolled ? 'var(--shadow-sm)' : 'none',
-  };
-
-  const linkStyle: React.CSSProperties = {
-    color: 'var(--text-muted)',
-    textDecoration: 'none',
-    fontSize: '0.85rem',
-    fontWeight: 500,
-    padding: '6px 10px',
-    borderRadius: '6px',
-    transition: 'color 0.2s, background 0.2s',
-    letterSpacing: '0.02em',
-  };
+  const avatarUrl = user?.avatar_url || null;
 
   return (
-    <nav style={navStyle} role="navigation" aria-label="Main navigation">
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '64px' }}>
-        {/* Logo */}
-        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', color: 'var(--text-heading)', fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>
-          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', color: 'white' }}>
-            <BookIcon />
-          </span>
-          Bookify
+    <nav className={`site-navbar${isScrolled ? ' is-scrolled' : ''}`} aria-label="Main navigation">
+      <div className="site-navbar-inner">
+        <Link to="/" className="site-brand" aria-label="Bookify home">
+          <span className="site-brand-mark"><BookIcon /></span>
+          <span>Bookify</span>
         </Link>
 
-        {/* Desktop nav links */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} className="hidden md:flex">
-          {navLinks.map((link) => (
-            <a key={link.href} href={link.href} style={linkStyle}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--accent)'; (e.currentTarget as HTMLAnchorElement).style.background = 'var(--surface-hover)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)'; (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'; }}
-            >{link.label}</a>
-          ))}
+        <div className="site-nav-links" aria-label="Explore Bookify">
+          {navLinks.map((link) => <Link key={link.label} to={link.to}>{link.label}</Link>)}
         </div>
 
-        {/* Right actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <ThemeToggle resolvedScheme={resolvedScheme} onToggle={onToggleTheme} />
+        <div className="site-navbar-actions">
+          {authenticated && user && <NotificationCenter />}
 
-          {authenticated && user ? (
-            <>
-              <Link to="/dashboard" className="nav-desktop-link"
-                onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLAnchorElement).style.color = 'var(--accent)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)'; }}
-              >Dashboard</Link>
-              {user.role === 'customer' && <Link to="/cart" className="nav-desktop-link cart-nav-link" aria-label={`Shopping cart, ${visibleCartCount} items`}>Cart <span className="cart-nav-badge">{visibleCartCount}</span></Link>}
-              <button onClick={handleLogout} className="nav-cta-btn"
-                style={{ cursor: 'pointer', border: 'none' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.9'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
-              >Log Out</button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" className="nav-desktop-link"
-                onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLAnchorElement).style.color = 'var(--accent)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)'; }}
-              >Sign In</Link>
-              <Link to="/register" className="nav-cta-btn"
-                onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.opacity = '0.9'; (e.currentTarget as HTMLAnchorElement).style.transform = 'translateY(-1px)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.opacity = '1'; (e.currentTarget as HTMLAnchorElement).style.transform = 'translateY(0)'; }}
-              >Get Started</Link>
-            </>
-          )}
-
-          {/* Mobile hamburger */}
-          <button type="button" aria-label={isMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={isMenuOpen}
-            onClick={() => setIsMenuOpen((v) => !v)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}
-            className="md:hidden"
+          <div
+            className="account-menu-wrap"
+            ref={accountRef}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAccountOpen(false);
+            }}
           >
-            {isMenuOpen ? <CloseIcon /> : <HamburgerIcon />}
+            <button
+              ref={accountTriggerRef}
+              type="button"
+              className={`account-menu-trigger${accountOpen ? ' is-open' : ''}`}
+              aria-label={authenticated && user ? `Account menu for ${user.first_name}` : 'Account menu'}
+              aria-expanded={accountOpen}
+              aria-controls="site-account-menu"
+              onClick={() => setAccountOpen((open) => !open)}
+            >
+              <span className="account-avatar" aria-hidden="true">
+                <UserIcon />
+                {avatarUrl && <img src={avatarUrl} alt="" onError={(event) => { event.currentTarget.hidden = true; }} />}
+              </span>
+              <ChevronIcon />
+            </button>
+
+            {accountOpen && (
+              <div id="site-account-menu" className="account-menu" ref={accountMenuRef} onKeyDown={onAccountMenuKeyDown}>
+                {authenticated && user ? (
+                  <>
+                    <div className="account-menu-profile">
+                      <span className="account-avatar account-avatar-large" aria-hidden="true">
+                        <UserIcon />
+                        {avatarUrl && <img src={avatarUrl} alt="" onError={(event) => { event.currentTarget.hidden = true; }} />}
+                      </span>
+                      <span className="account-menu-profile-copy">
+                        <strong>{user.first_name} {user.last_name}</strong>
+                        <small>{user.email}</small>
+                        <small className="account-role-tag">{user.role}</small>
+                      </span>
+                    </div>
+                    <Link data-account-menu-item to="/account" onClick={() => closeAccountMenu(false)}><UserIcon />My Profile</Link>
+                    <Link data-account-menu-item to={dashboardPath[user.role]} onClick={() => closeAccountMenu(false)}><DashboardIcon />Dashboard</Link>
+                  </>
+                ) : (
+                  <div className="account-menu-auth-actions">
+                    <Link data-account-menu-item to="/login" onClick={() => closeAccountMenu(false)}>Sign in</Link>
+                    <Link data-account-menu-item to="/register" className="account-menu-register" onClick={() => closeAccountMenu(false)}>Create account</Link>
+                  </div>
+                )}
+
+                <div className="account-menu-appearance">
+                  <span><AppearanceIcon />Appearance</span>
+                  <div className="account-appearance-control">
+                    <small>{resolvedScheme === 'dark' ? 'Dark' : 'Light'} mode</small>
+                    <ThemeToggle resolvedScheme={resolvedScheme} onToggle={onToggleTheme} />
+                  </div>
+                </div>
+
+                {authenticated && user && (
+                  <button data-account-menu-item className="account-menu-signout" type="button" onClick={() => void handleLogout()}>
+                    <SignOutIcon />Sign out
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button type="button" className="mobile-menu-trigger" aria-label={isMenuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={isMenuOpen} onClick={() => setIsMenuOpen((open) => !open)}>
+            {isMenuOpen ? <CloseIcon /> : <MenuIcon />}
           </button>
         </div>
       </div>
 
-      {/* Mobile menu */}
       {isMenuOpen && (
-        <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg)', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {navLinks.map((link) => (
-            <a key={link.href} href={link.href} onClick={() => setIsMenuOpen(false)}
-              style={{ ...linkStyle, fontSize: '0.95rem', padding: '10px 12px', display: 'block' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--accent)'; (e.currentTarget as HTMLAnchorElement).style.background = 'var(--surface-hover)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)'; (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'; }}
-            >{link.label}</a>
-          ))}
-          <div style={{ borderTop: '1px solid var(--border)', margin: '8px 0' }} />
-          {authenticated && user ? (
-            <>
-              <Link to="/account" onClick={() => setIsMenuOpen(false)}
-                style={{ ...linkStyle, fontSize: '0.95rem', padding: '10px 12px', display: 'block', border: '1px solid var(--border)', textAlign: 'center', borderRadius: '8px', background: 'var(--surface)' }}
-              >{user.first_name}'s Account</Link>
-              {user.role === 'customer' && <Link to="/cart" onClick={() => setIsMenuOpen(false)} className="mobile-cart-link">Shopping cart <span className="cart-nav-badge">{visibleCartCount}</span></Link>}
-              <button onClick={handleLogout}
-                style={{ textDecoration: 'none', textAlign: 'center', fontSize: '0.95rem', fontWeight: 600, padding: '10px 12px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', color: 'white', marginTop: '4px', border: 'none', cursor: 'pointer', fontFamily: "'Inter', Arial, sans-serif" }}
-              >Log Out</button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" onClick={() => setIsMenuOpen(false)}
-                style={{ ...linkStyle, fontSize: '0.95rem', padding: '10px 12px', display: 'block', border: '1px solid var(--border)', textAlign: 'center', borderRadius: '8px', background: 'var(--surface)' }}
-              >Sign In</Link>
-              <Link to="/register" onClick={() => setIsMenuOpen(false)}
-                style={{ textDecoration: 'none', textAlign: 'center', fontSize: '0.95rem', fontWeight: 600, padding: '10px 12px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--green-500), var(--blue-500))', color: 'white', marginTop: '4px', display: 'block' }}
-              >Get Started</Link>
-            </>
-          )}
+        <div className="mobile-nav-panel">
+          {navLinks.map((link) => <Link key={link.label} to={link.to} onClick={() => setIsMenuOpen(false)}>{link.label}</Link>)}
         </div>
       )}
     </nav>
   );
 };
+
+const iconProps = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true as const };
+
+const BookIcon: FC = () => <svg width="21" height="21" {...iconProps}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>;
+const UserIcon: FC = () => <svg width="18" height="18" {...iconProps}><circle cx="12" cy="8" r="4" /><path d="M5 21a7 7 0 0 1 14 0" /></svg>;
+const DashboardIcon: FC = () => <svg width="18" height="18" {...iconProps}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /></svg>;
+const AppearanceIcon: FC = () => <svg width="18" height="18" {...iconProps}><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18z" /></svg>;
+const SignOutIcon: FC = () => <svg width="18" height="18" {...iconProps}><path d="M10 17l5-5-5-5M15 12H3" /><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" /></svg>;
+const ChevronIcon: FC = () => <svg width="14" height="14" {...iconProps}><path d="m6 9 6 6 6-6" /></svg>;
+const MenuIcon: FC = () => <svg width="21" height="21" {...iconProps}><path d="M4 6h16M4 12h16M4 18h16" /></svg>;
+const CloseIcon: FC = () => <svg width="21" height="21" {...iconProps}><path d="m6 6 12 12M18 6 6 18" /></svg>;
 
 export default Navbar;

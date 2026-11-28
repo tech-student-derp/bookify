@@ -23,7 +23,7 @@ function getInitialLanguage(): LanguageEntry {
 
 const HeroSection: FC = () => {
   const revealRef = useIntersectionFade(0.1);
-  const [currentLang, setCurrentLang] = useState<LanguageEntry>(getInitialLanguage);
+  const [initialLanguage] = useState<LanguageEntry>(getInitialLanguage);
   const [statistics, setStatistics] = useState<PublicStatistics | null>(null);
   const [statisticsLoading, setStatisticsLoading] = useState(true);
 
@@ -51,7 +51,6 @@ const HeroSection: FC = () => {
   }, []);
 
   const handleLanguageChange = useCallback((language: LanguageEntry) => {
-    setCurrentLang(language);
     window.sessionStorage.setItem(LAST_LANGUAGE_KEY, language.code);
   }, []);
 
@@ -69,11 +68,7 @@ const HeroSection: FC = () => {
             <span className="hero-eyebrow-dot" aria-hidden="true" />
             A marketplace for every kind of reader
           </div>
-          <div className="hero-language" aria-label={`Bookify welcomes readers in ${currentLang.name}`}>
-            <span>{currentLang.nativeName}</span>
-            {currentLang.name && <span className="hero-language-english"> · {currentLang.name}</span>}
-          </div>
-          <TypewriterText initialLanguage={currentLang} onLanguageChange={handleLanguageChange} />
+          <TypewriterText initialLanguage={initialLanguage} onLanguageChange={handleLanguageChange} />
 
           <div className="hero-actions">
             <a className="hero-button hero-button-primary" href="#explore">

@@ -1,5 +1,6 @@
 import { type FC, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useCartOverlay } from '../contexts/CartOverlayContext';
 
 export type MarketplaceProductImage = {
   id: number | string;
@@ -57,7 +58,9 @@ type MarketplaceProductDetailProps = {
 
 export const MarketplaceProductDetail: FC<MarketplaceProductDetailProps> = ({
   book, sellerPreview = false, authenticated = false, userRole, addingToCart = false, cartMessage, onAddToCart,
-}) => (
+}) => {
+  const { openCart } = useCartOverlay();
+  return (
   <div className="detail-card">
     <MarketplaceBookCover book={book} large />
     <div className="detail-copy">
@@ -92,8 +95,9 @@ export const MarketplaceProductDetail: FC<MarketplaceProductDetailProps> = ({
               : userRole !== 'customer' ? <button className="market-button" disabled title="Only customer accounts can use the shopping cart">Customer account required</button>
                 : <button className="market-button" onClick={onAddToCart} disabled={addingToCart}>{addingToCart ? 'Adding...' : 'Add to cart'}</button>}
         {cartMessage && <p className="cart-inline-message" role="status">{cartMessage}</p>}
-        {authenticated && userRole === 'customer' && <Link className="view-cart-link" to="/cart">View cart</Link>}
+        {authenticated && userRole === 'customer' && <button className="view-cart-link" type="button" onClick={openCart}>View cart</button>}
       </>}
     </div>
   </div>
-);
+  );
+};

@@ -1,8 +1,11 @@
-import { type FC } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { useTheme } from './hooks/useTheme';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import FloatingCartButton from './components/FloatingCartButton';
+import { useCartOverlay } from './contexts/CartOverlayContext';
+import { CartOverlayProvider } from './contexts/CartOverlayProvider';
 
 // Landing page sections
 import Navbar from './components/Navbar';
@@ -23,9 +26,9 @@ import SellerApplicationPage from './pages/auth/SellerApplicationPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import StaffAddAccountPage from './pages/StaffAddAccountPage';
 import MarketplacePage from './pages/MarketplacePage';
-import CartPage from './pages/CartPage';
 import PublicSellerPage from './pages/PublicSellerPage';
 import BackOfficePage from './pages/backoffice/BackOfficePage';
+import BookifyIntro from './components/BookifyIntro';
 
 // Seller Workspace pages
 import SellerLayout from './pages/seller/SellerLayout';
@@ -34,6 +37,25 @@ import SellerListingsPage from './pages/seller/SellerListingsPage';
 import SellerOrdersPage from './pages/seller/SellerOrdersPage';
 import SellerEarningsPage from './pages/seller/SellerEarningsPage';
 import SellerSettingsPage from './pages/seller/SellerSettingsPage';
+
+const INTRO_DURATION_MS = 2200;
+const XAMPP_BASE_PATH = '/bookify';
+
+function normalizedPath(pathname: string): string {
+  return pathname.replace(/\/+$/, '') || '/';
+}
+
+function getRouterBasename(pathname: string): string | undefined {
+  const normalized = normalizedPath(pathname);
+  return normalized === XAMPP_BASE_PATH || normalized.startsWith(`${XAMPP_BASE_PATH}/`)
+    ? XAMPP_BASE_PATH
+    : undefined;
+}
+
+function isHeroPath(pathname: string): boolean {
+  const normalized = normalizedPath(pathname);
+  return normalized === '/' || normalized === XAMPP_BASE_PATH;
+}
 
 /** Landing page — existing hero + sections */
 const LandingPage: FC = () => (
@@ -47,22 +69,73 @@ const LandingPage: FC = () => (
 
 const AppContent: FC<{ resolvedScheme: 'light' | 'dark'; toggle: () => void }> = ({ resolvedScheme, toggle }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { openCart } = useCartOverlay();
+  const [introVisible, setIntroVisible] = useState(
+    () => isHeroPath(window.location.pathname),
+  );
+  const appInterfaceRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const routeState = location.state as { openCart?: boolean } | null;
+    if (routeState?.openCart) {
+      openCart();
+      navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
+    }
+  }, [location.hash, location.pathname, location.search, location.state, navigate, openCart]);
+
+  useLayoutEffect(() => {
+    if (location.pathname !== '/') {
+      const hideTimer = window.setTimeout(() => setIntroVisible(false), 0);
+      return () => window.clearTimeout(hideTimer);
+    }
+
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setIntroVisible(true);
+    });
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && appInterfaceRef.current?.contains(activeElement)) {
+      activeElement.blur();
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const timer = window.setTimeout(() => {
+      document.body.style.overflow = previousOverflow;
+      setIntroVisible(false);
+    }, INTRO_DURATION_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [location.pathname]);
+
   const isDashboardRoute = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/account');
-  const isBackOfficeRoute = location.pathname.startsWith('/admin') || location.pathname.startsWith('/staff');
-  const isPlainHtmlRoute = location.pathname.startsWith('/staffaddaccount');
-  const isSellerRoute = location.pathname.startsWith('/seller');
+  const isBackOfficeRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/')
+    || location.pathname === '/staff' || location.pathname.startsWith('/staff/');
+  const isSellerRoute = location.pathname === '/seller' || location.pathname.startsWith('/seller/');
+  const showIntro = introVisible && location.pathname === '/';
 
   return (
     <>
-      {!isDashboardRoute && !isBackOfficeRoute && !isPlainHtmlRoute && !isSellerRoute && (
-        <Navbar resolvedScheme={resolvedScheme} onToggleTheme={toggle} />
-      )}
-      <Routes>
+      <div
+        className="bookify-app-interface"
+        ref={appInterfaceRef}
+        inert={showIntro}
+        aria-hidden={showIntro || undefined}
+      >
+        {!isDashboardRoute && !isBackOfficeRoute && !isSellerRoute && (
+          <Navbar resolvedScheme={resolvedScheme} onToggleTheme={toggle} />
+        )}
+        <Routes>
         {/* Public */}
         <Route path="/books" element={<MarketplacePage />} />
         <Route path="/books/:bookId" element={<MarketplacePage />} />
         <Route path="/sellers/:sellerId" element={<PublicSellerPage />} />
-        <Route path="/cart" element={<ProtectedRoute allowedRoles={['customer']}><CartPage /></ProtectedRoute>} />
+        <Route path="/cart" element={<CartRouteRedirect />} />
         <Route path="/" element={<><LandingPage /><Footer /></>} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -119,18 +192,35 @@ const AppContent: FC<{ resolvedScheme: 'light' | 'dark'; toggle: () => void }> =
             </ProtectedRoute>
           }
         />
-      </Routes>
+        </Routes>
+        <FloatingCartButton />
+      </div>
+      {showIntro && (
+        <BookifyIntro theme={resolvedScheme} />
+      )}
     </>
   );
+};
+
+const CartRouteRedirect: FC = () => {
+  const navigate = useNavigate();
+  const { authenticated, user } = useAuth();
+  useEffect(() => {
+    const state = authenticated && user?.role === 'customer' ? { openCart: true } : null;
+    navigate('/books', { replace: true, state });
+  }, [authenticated, navigate, user?.role]);
+  return null;
 };
 
 const App: FC = () => {
   const { resolvedScheme, toggle } = useTheme();
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={getRouterBasename(window.location.pathname)}>
       <AuthProvider>
-        <AppContent resolvedScheme={resolvedScheme} toggle={toggle} />
+        <CartOverlayProvider>
+          <AppContent resolvedScheme={resolvedScheme} toggle={toggle} />
+        </CartOverlayProvider>
       </AuthProvider>
     </BrowserRouter>
   );

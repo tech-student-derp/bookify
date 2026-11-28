@@ -26,9 +26,9 @@
   --accent-hover:  var(--green-600);
   --accent-blue:   var(--blue-500);
   --hero-bg: #f7f4e8;
-  --hero-stage: #b4d789;
-  --hero-tag-bg: #fffdf4;
-  --hero-ink: #294b31;
+  --hero-stage: #183d2b;
+  --hero-stage-light: #2b6041;
+  --hero-ink: #f6f4e8;
   --hero-stat: #315d3d;
   --hero-divider: #c5d4b9;
   --hero-ghost: #fffdf4;
@@ -59,9 +59,9 @@
     --accent-hover:  var(--green-500);
     --accent-blue:   var(--blue-400);
     --hero-bg: #15271d;
-    --hero-stage: #96bd69;
-    --hero-tag-bg: #b4d789;
-    --hero-ink: #24452d;
+    --hero-stage: #193a2b;
+    --hero-stage-light: #31583d;
+    --hero-ink: #f6f4e8;
     --hero-stat: #c4e69a;
     --hero-divider: #47634a;
     --hero-ghost: #22372a;
@@ -85,9 +85,9 @@
   --accent-hover:  var(--green-500);
   --accent-blue:   var(--blue-400);
   --hero-bg: #15271d;
-  --hero-stage: #96bd69;
-  --hero-tag-bg: #b4d789;
-  --hero-ink: #24452d;
+  --hero-stage: #193a2b;
+  --hero-stage-light: #31583d;
+  --hero-ink: #f6f4e8;
   --hero-stat: #c4e69a;
   --hero-divider: #47634a;
   --hero-ghost: #22372a;
@@ -109,9 +109,9 @@
   --accent-hover:  var(--green-600);
   --accent-blue:   var(--blue-500);
   --hero-bg: #f7f4e8;
-  --hero-stage: #b4d789;
-  --hero-tag-bg: #fffdf4;
-  --hero-ink: #294b31;
+  --hero-stage: #183d2b;
+  --hero-stage-light: #2b6041;
+  --hero-ink: #f6f4e8;
   --hero-stat: #315d3d;
   --hero-divider: #c5d4b9;
   --hero-ghost: #fffdf4;
@@ -200,20 +200,6 @@ body {
   letter-spacing: .025em;
 }
 .hero-eyebrow-dot { width: 8px; height: 8px; border-radius: 50%; background: #5f8967; box-shadow: 0 0 0 4px #5f89671d; }
-.hero-language {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  margin-bottom: 5px;
-  padding: 4px 10px;
-  border: 1px solid color-mix(in oklch, #55765a 26%, var(--border));
-  border-radius: 999px;
-  color: var(--hero-ink);
-  background: var(--hero-tag-bg);
-  font-family: 'Geist Mono', monospace;
-  font-size: .66rem;
-}
-.hero-language-english { margin-left: 4px; opacity: .75; }
 .hero-copy h1 {
   max-width: 12ch;
   margin: 12px 0 14px !important;
@@ -261,7 +247,9 @@ body {
 .hero-stat-label { color: var(--text-muted); font-size: .72rem; }
 .hero-stat-note { align-self: center; max-width: 110px; margin-left: 12px; color: var(--text-muted); font-size: .68rem; line-height: 1.45; }
 .hero-artwork { position: relative; display: grid; min-width: 0; place-items: center; }
-.hero-artwork > div { z-index: 1; max-width: 660px !important; aspect-ratio: 1.17 / 1 !important; border: 1px solid #ffffff70; border-radius: 24px !important; background: var(--hero-stage) !important; box-shadow: 0 24px 70px #304d321b; }
+.hero-artwork::before { position: absolute; z-index: 2; inset: 2% 1% 5%; border: 1px solid color-mix(in srgb, var(--hero-stage-light) 48%, transparent); content: ''; pointer-events: none; }
+.hero-artwork::after { position: absolute; z-index: 2; right: 9%; bottom: 13%; left: 9%; height: 13%; border: 1px solid color-mix(in srgb, var(--hero-stage-light) 30%, transparent); border-top: 0; transform: perspective(420px) rotateX(58deg); content: ''; pointer-events: none; }
+.hero-artwork > div { z-index: 1; max-width: 660px !important; aspect-ratio: 1.17 / 1 !important; border: 1px solid color-mix(in srgb, var(--hero-stage-light) 60%, white) !important; border-radius: 16px !important; background: radial-gradient(ellipse at 52% 43%, var(--hero-stage-light), var(--hero-stage) 68%) !important; box-shadow: 0 30px 76px color-mix(in srgb, var(--hero-stage) 34%, transparent); }
 .hero-artwork-caption { position: absolute; right: 5%; bottom: 1%; z-index: 2; display: flex; align-items: center; gap: 9px; margin: 0; color: var(--hero-ink); font-size: .7rem; font-weight: 600; letter-spacing: .02em; }
 .hero-artwork-caption span { font-family: 'Geist Mono', monospace; font-size: .63rem; }
 
@@ -280,6 +268,8 @@ body {
   .hero-statistics { margin-top: 29px; }
   .hero-artwork { margin: -8px -12px 0; }
   .hero-artwork > div { width: 100%; aspect-ratio: 1.2 / 1 !important; }
+  .hero-artwork::before { inset: 2% 1% 5%; }
+  .hero-artwork::after { bottom: 13%; }
   .hero-artwork-caption { right: 5%; bottom: -3px; }
 }
 @media (max-width: 390px) {

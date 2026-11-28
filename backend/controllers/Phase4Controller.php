@@ -207,7 +207,6 @@ function buildNotifications(PDO $db): array {
     ];
     foreach ($queries as $sql) { $stmt = $db->query($sql); foreach ($stmt->fetchAll() as $row) if (!array_key_exists($row['type'], $enabled) || $enabled[$row['type']]) $rows[] = $row; }
     usort($rows, static fn(array $a, array $b): int => strcmp((string) $b['occurred_at'], (string) $a['occurred_at']));
-    $rows = array_slice($rows, 0, 50);
     $read = $db->prepare('SELECT notification_key FROM backoffice_notification_reads WHERE user_id = ?'); $read->execute([$actor]);
     $readKeys = array_fill_keys(array_column($read->fetchAll(), 'notification_key'), true);
     foreach ($rows as &$row) $row['is_read'] = isset($readKeys[$row['notification_key']]); unset($row);
@@ -217,7 +216,7 @@ function buildNotifications(PDO $db): array {
 function handleNotifications(PDO $db): never {
     requireMethod('GET');
     $notifications = buildNotifications($db); $unread = count(array_filter($notifications, static fn(array $item): bool => !$item['is_read']));
-    successResponse(['notifications' => $notifications, 'unread_count' => $unread]);
+    successResponse(['notifications' => array_slice($notifications, 0, 50), 'unread_count' => $unread]);
 }
 
 function markNotificationRead(PDO $db): never {

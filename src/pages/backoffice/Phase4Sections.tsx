@@ -1,6 +1,6 @@
-import { type FC, type FormEvent, useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { getActivity, getNotifications, getPreferences, getReports, listAudit, markNotificationRead, updatePreference, type ActivityEvent, type AuditRecord, type NotificationRecord, type NotificationPreference, type ReportData } from '../../services/phase4Api';
+import { type FC, type FormEvent, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { getActivity, getPreferences, getReports, listAudit, updatePreference, type ActivityEvent, type AuditRecord, type NotificationPreference, type ReportData } from '../../services/phase4Api';
 
 const money = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 const dateText = (value: string) => new Date(value.replace(' ', 'T') + (value.endsWith('Z') ? '' : 'Z')).toLocaleString('en-PH');
@@ -17,24 +17,6 @@ export const ActivityFeed: FC<{ basePath: string }> = ({ basePath }) => {
     return suffix ? `${basePath}/${suffix}` : basePath;
   };
   return <div className="bo-activity-feed">{loading ? <div className="bo-panel-empty">Loading recent activity…</div> : error ? <div className="bo-panel-empty"><strong>Activity is unavailable</strong><p>{error}</p></div> : events.length ? events.map((event) => <Link to={target(event.route)} className="bo-activity-row" key={event.event_key}><span className="bo-activity-mark" /><span className="bo-activity-copy"><strong>{event.title}</strong><small>{event.description}</small></span><time>{dateText(event.occurred_at)}</time></Link>) : <div className="bo-panel-empty"><span className="bo-empty-symbol">·</span><strong>No recent activity recorded</strong><p>Marketplace and staff events will appear here when real database activity exists.</p></div>}</div>;
-};
-
-export const NotificationCenter: FC<{ basePath: string }> = ({ basePath }) => {
-  const navigate = useNavigate(); const [open, setOpen] = useState(false); const [items, setItems] = useState<NotificationRecord[]>([]); const [unread, setUnread] = useState(0); const [error, setError] = useState(''); const [loading, setLoading] = useState(true);
-  const load = useCallback(() => { setLoading(true); getNotifications().then((data) => { setItems(data.notifications); setUnread(data.unread_count); setError(''); }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Notifications unavailable.')).finally(() => setLoading(false)); }, []);
-  useEffect(() => {
-    let live = true;
-    getNotifications().then((data) => { if (live) { setItems(data.notifications); setUnread(data.unread_count); setError(''); } })
-      .catch((cause: unknown) => { if (live) setError(cause instanceof Error ? cause.message : 'Notifications unavailable.'); })
-      .finally(() => { if (live) setLoading(false); });
-    return () => { live = false; };
-  }, []);
-  const openNotification = async (item: NotificationRecord) => {
-    try { if (!item.is_read) await markNotificationRead(item.notification_key); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update notification.'); }
-    const allowed = ['users','staff'].includes(item.section) && basePath === '/staff' ? '' : item.section;
-    navigate(allowed ? `${basePath}/${allowed}` : basePath); setOpen(false); load();
-  };
-  return <div className="bo-notification-wrap"><button className="bo-notification-trigger" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open) load(); }}><span aria-hidden="true">♧</span>{unread > 0 && <i>{unread > 99 ? '99+' : unread}</i>}</button>{open && <section className="bo-notification-popover" aria-label="Notifications"><header><div><strong>Notifications</strong><small>{unread ? `${unread} unread operational items` : 'Live operational queue'}</small></div><button onClick={load} disabled={loading} aria-label="Refresh notifications">↻</button></header>{error ? <div className="bo-notification-empty" role="alert">{error}</div> : loading && !items.length ? <div className="bo-notification-empty">Loading…</div> : items.length ? <div className="bo-notification-list">{items.slice(0, 12).map((item) => <button key={item.notification_key} className={`bo-notification-item${item.is_read ? '' : ' unread'}`} onClick={() => void openNotification(item)}><span className="bo-notification-dot" /><span><strong>{item.title}</strong><small>{item.message}</small><time>{dateText(item.occurred_at)}</time></span></button>)}</div> : <div className="bo-notification-empty">No outstanding operational notifications.</div>}<footer><button onClick={() => { navigate(`${basePath}/settings`); setOpen(false); }}>Notification preferences</button></footer></section>}</div>;
 };
 
 export const SettingsManagement: FC = () => {

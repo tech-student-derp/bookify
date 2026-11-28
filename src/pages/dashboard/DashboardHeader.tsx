@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { User } from '../../types/auth';
 import type { DashboardTab } from './DashboardSidebar';
 import ThemeToggle from '../../components/ThemeToggle';
+import NotificationCenter from '../../components/NotificationCenter';
 
 interface DashboardHeaderProps {
   user: User;
@@ -25,6 +26,7 @@ export const DashboardHeader: FC<DashboardHeaderProps> = ({
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
 
   const initials = `${user.first_name?.[0] ?? ''}${user.last_name?.[0] ?? ''}`.toUpperCase() || 'U';
 
@@ -36,17 +38,35 @@ export const DashboardHeader: FC<DashboardHeaderProps> = ({
   };
 
   useEffect(() => {
+    if (dropdownOpen) {
+      const focusFrame = window.requestAnimationFrame(() => dropdownRef.current?.querySelector<HTMLElement>('#dashboard-account-menu button, #dashboard-account-menu a')?.focus());
+      return () => window.cancelAnimationFrame(focusFrame);
+    }
+  }, [dropdownOpen]);
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
       }
     };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDropdownOpen(false);
+        dropdownTriggerRef.current?.focus();
+      }
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, []);
 
   return (
     <header
+      className="customer-dashboard-header"
       style={{
         height: '64px',
         background: 'var(--surface)',
@@ -58,7 +78,7 @@ export const DashboardHeader: FC<DashboardHeaderProps> = ({
         position: 'sticky',
         top: 0,
         zIndex: 100,
-        fontFamily: "'Geist Mono', monospace",
+        fontFamily: "'Inter', Arial, sans-serif",
         boxShadow: 'var(--shadow-sm)',
       }}
     >
@@ -161,14 +181,16 @@ export const DashboardHeader: FC<DashboardHeaderProps> = ({
           Browse Books
         </a>
 
-        <ThemeToggle resolvedScheme={resolvedScheme} onToggle={onToggleTheme} />
+        <NotificationCenter />
 
         {/* Account Menu Dropdown */}
         <div style={{ position: 'relative' }} ref={dropdownRef}>
           <button
+            ref={dropdownTriggerRef}
             onClick={() => setDropdownOpen((v) => !v)}
             aria-expanded={dropdownOpen}
             aria-haspopup="true"
+            aria-controls="dashboard-account-menu"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -179,13 +201,14 @@ export const DashboardHeader: FC<DashboardHeaderProps> = ({
               background: 'var(--surface)',
               color: 'var(--text)',
               cursor: 'pointer',
-              fontFamily: "'Geist Mono', monospace",
+              fontFamily: "'Inter', Arial, sans-serif",
               transition: 'border-color 0.2s, background 0.2s',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
             onMouseLeave={(e) => { if (!dropdownOpen) e.currentTarget.style.borderColor = 'var(--border)'; }}
           >
             <div
+              id="dashboard-account-menu"
               style={{
                 width: '28px',
                 height: '28px',
@@ -371,7 +394,12 @@ export const DashboardHeader: FC<DashboardHeaderProps> = ({
 
               </div>
 
-              <div style={{ borderTop: '1px solid var(--border)', padding: '6px 0' }}>
+              <div style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                <span style={{ color: 'var(--text)', fontSize: '0.82rem', fontWeight: 500 }}>Appearance · {resolvedScheme === 'dark' ? 'Dark' : 'Light'}</span>
+                <ThemeToggle resolvedScheme={resolvedScheme} onToggle={onToggleTheme} />
+              </div>
+
+              <div style={{ borderTop: '0', padding: '6px 0' }}>
                 <a
                   href="/#explore"
                   style={{

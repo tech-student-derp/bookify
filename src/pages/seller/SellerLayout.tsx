@@ -22,7 +22,7 @@ export const SellerLayout: FC<SellerLayoutProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors duration-200">
+    <div className="seller-workspace min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors duration-200">
       {/* Dedicated Seller Sidebar (Desktop fixed 260px, Mobile drawer) */}
       <SellerSidebar
         user={user}

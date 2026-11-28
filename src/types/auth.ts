@@ -8,6 +8,7 @@ export interface User {
   email: string;
   role: UserRole;
   is_verified: boolean;
+  avatar_url?: string | null;
   contact_number?: string | null;
   created_at?: string;
 }

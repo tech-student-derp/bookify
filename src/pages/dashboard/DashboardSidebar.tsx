@@ -88,6 +88,7 @@ export const DashboardSidebar: FC<DashboardSidebarProps> = ({
 
       {/* Sidebar Container */}
       <aside
+        className={`customer-dashboard-sidebar ${isOpen ? 'translate-x-0 is-open' : '-translate-x-full lg:translate-x-0'}`}
         style={{
           width: '260px',
           height: '100svh',
@@ -99,11 +100,10 @@ export const DashboardSidebar: FC<DashboardSidebarProps> = ({
           borderRight: '1px solid var(--border)',
           display: 'flex',
           flexDirection: 'column',
-          fontFamily: "'Geist Mono', monospace",
+          fontFamily: "'Inter', Arial, sans-serif",
           transition: 'transform 0.25s ease-in-out',
           transform: isOpen ? 'translateX(0)' : undefined,
         }}
-        className={`${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
         {/* Brand Header */}
         <div
